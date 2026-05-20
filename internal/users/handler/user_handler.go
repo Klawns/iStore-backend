@@ -4,6 +4,7 @@ import (
 	authDomain "istore/internal/auth/domain"
 	authMiddleware "istore/internal/auth/middleware"
 	"istore/internal/users/dto/request"
+	"istore/internal/users/dto/response"
 	"istore/internal/users/service/contracts"
 	"istore/pkg/rest_err"
 	"istore/pkg/validation"
@@ -28,13 +29,16 @@ func (h *UserHandler) Create(ctx *gin.Context) {
 		return
 	}
 
-	user, restErr := h.service.Create(req)
+	user, restErr := h.service.Create(contracts.CreateUserInput{
+		Email:    req.Email,
+		Password: req.Password,
+	})
 	if restErr != nil {
 		ctx.JSON(restErr.Code, restErr)
 		return
 	}
 
-	ctx.JSON(http.StatusCreated, user)
+	ctx.JSON(http.StatusCreated, response.FromDomain(user))
 }
 
 func (h *UserHandler) Me(ctx *gin.Context) {
@@ -58,5 +62,5 @@ func (h *UserHandler) Me(ctx *gin.Context) {
 		return
 	}
 
-	ctx.JSON(http.StatusOK, user)
+	ctx.JSON(http.StatusOK, response.FromDomain(user))
 }

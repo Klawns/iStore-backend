@@ -1,12 +1,16 @@
 package contracts
 
 import (
-	"istore/internal/users/dto/request"
-	"istore/internal/users/dto/response"
+	"istore/internal/users/domain"
 	"istore/pkg/rest_err"
 )
 
+type CreateUserInput struct {
+	Email    string
+	Password string
+}
+
 type UserService interface {
-	Create(req request.UserRequest) (*response.UserResponse, *rest_err.RestErr)
-	FindByID(id uint) (*response.UserResponse, *rest_err.RestErr)
+	Create(input CreateUserInput) (*domain.User, *rest_err.RestErr)
+	FindByID(id uint) (*domain.User, *rest_err.RestErr)
 }

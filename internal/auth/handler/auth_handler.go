@@ -31,7 +31,10 @@ func (h *AuthHandler) SignIn(ctx *gin.Context) {
 		return
 	}
 
-	token, restErr := h.authService.SignIn(req)
+	token, restErr := h.authService.SignIn(contracts.SignInInput{
+		Email:    req.Email,
+		Password: req.Password,
+	})
 	if restErr != nil {
 		ctx.JSON(restErr.Code, restErr)
 		return

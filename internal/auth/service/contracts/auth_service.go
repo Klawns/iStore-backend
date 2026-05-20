@@ -1,10 +1,12 @@
 package contracts
 
-import (
-	"istore/internal/auth/dto/request"
-	"istore/pkg/rest_err"
-)
+import "istore/pkg/rest_err"
+
+type SignInInput struct {
+	Email    string
+	Password string
+}
 
 type AuthService interface {
-	SignIn(req request.AuthRequest) (string, *rest_err.RestErr)
+	SignIn(input SignInInput) (string, *rest_err.RestErr)
 }

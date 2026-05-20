@@ -1,7 +1,6 @@
 package implementation
 
 import (
-	"istore/internal/auth/dto/request"
 	authContracts "istore/internal/auth/service/contracts"
 	userRepository "istore/internal/users/repository/contracts"
 	"istore/pkg/logger"
@@ -24,8 +23,8 @@ func NewAuthService(userRepository userRepository.UserRepository, jwtProvider au
 	}
 }
 
-func (s *authService) SignIn(req request.AuthRequest) (string, *rest_err.RestErr) {
-	email := strings.TrimSpace(strings.ToLower(req.Email))
+func (s *authService) SignIn(input authContracts.SignInInput) (string, *rest_err.RestErr) {
+	email := strings.TrimSpace(strings.ToLower(input.Email))
 
 	user, err := s.userRepository.FindByEmail(email)
 	if err != nil {
@@ -36,7 +35,7 @@ func (s *authService) SignIn(req request.AuthRequest) (string, *rest_err.RestErr
 		return "", rest_err.NewUnauthorizedRequestError("invalid credentials")
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(input.Password)); err != nil {
 		return "", rest_err.NewUnauthorizedRequestError("invalid credentials")
 	}
 

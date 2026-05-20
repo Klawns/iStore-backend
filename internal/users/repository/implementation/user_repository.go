@@ -3,8 +3,8 @@ package implementation
 import (
 	"errors"
 	"istore/internal/users/domain"
-	"istore/internal/users/entity"
 	"istore/internal/users/repository/contracts"
+	"istore/internal/users/repository/entity"
 
 	"gorm.io/gorm"
 )
