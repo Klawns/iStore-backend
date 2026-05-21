@@ -1,6 +1,9 @@
 package main
 
 import (
+	analyticsHandler "istore/internal/analytics/handler"
+	analyticsRepositoryImplementation "istore/internal/analytics/repository/implementation"
+	analyticsServiceImplementation "istore/internal/analytics/service/implementation"
 	authHandler "istore/internal/auth/handler"
 	authMiddleware "istore/internal/auth/middleware"
 	authImplementation "istore/internal/auth/service/implementation"
@@ -18,11 +21,12 @@ import (
 )
 
 type dependencies struct {
-	authHandler     *authHandler.AuthHandler
-	authMiddleware  *authMiddleware.AuthMiddleware
-	customerHandler *customerHandler.CustomerHandler
-	saleHandler     *saleHandler.SaleHandler
-	userHandler     *userHandler.UserHandler
+	analyticsHandler *analyticsHandler.AnalyticsHandler
+	authHandler      *authHandler.AuthHandler
+	authMiddleware   *authMiddleware.AuthMiddleware
+	customerHandler  *customerHandler.CustomerHandler
+	saleHandler      *saleHandler.SaleHandler
+	userHandler      *userHandler.UserHandler
 }
 
 func buildDependencies(db *gorm.DB) dependencies {
@@ -39,11 +43,15 @@ func buildDependencies(db *gorm.DB) dependencies {
 	saleRepository := saleRepositoryImplementation.NewSaleRepository(db)
 	saleService := saleServiceImplementation.NewSaleService(saleRepository)
 
+	analyticsRepository := analyticsRepositoryImplementation.NewAnalyticsRepository(db)
+	analyticsService := analyticsServiceImplementation.NewAnalyticsService(analyticsRepository)
+
 	return dependencies{
-		authHandler:     authHandler.NewAuthHandler(authService, cookieManager),
-		authMiddleware:  authMiddleware.NewAuthMiddleware(jwtProvider, cookieManager),
-		customerHandler: customerHandler.NewCustomerHandler(customerService),
-		saleHandler:     saleHandler.NewSaleHandler(saleService),
-		userHandler:     userHandler.NewUserHandler(userService),
+		analyticsHandler: analyticsHandler.NewAnalyticsHandler(analyticsService),
+		authHandler:      authHandler.NewAuthHandler(authService, cookieManager),
+		authMiddleware:   authMiddleware.NewAuthMiddleware(jwtProvider, cookieManager),
+		customerHandler:  customerHandler.NewCustomerHandler(customerService),
+		saleHandler:      saleHandler.NewSaleHandler(saleService),
+		userHandler:      userHandler.NewUserHandler(userService),
 	}
 }

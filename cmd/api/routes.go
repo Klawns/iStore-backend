@@ -23,4 +23,13 @@ func registerRoutes(router *gin.Engine, dependencies dependencies) {
 	sales.GET("/:id", dependencies.saleHandler.GetByID)
 	sales.PATCH("/:id/status", dependencies.saleHandler.UpdateStatus)
 	sales.DELETE("/:id", dependencies.saleHandler.Delete)
+
+	analytics := router.Group("/analytics", dependencies.authMiddleware.Authenticate())
+	analytics.GET("/dashboard", dependencies.analyticsHandler.Dashboard)
+	analytics.GET("/revenue", dependencies.analyticsHandler.Revenue)
+	analytics.GET("/profit", dependencies.analyticsHandler.Profit)
+	analytics.GET("/products/top", dependencies.analyticsHandler.TopProducts)
+	analytics.GET("/payments", dependencies.analyticsHandler.PaymentMethods)
+	analytics.GET("/customers/top", dependencies.analyticsHandler.TopCustomers)
+	analytics.GET("/statuses", dependencies.analyticsHandler.Statuses)
 }
