@@ -15,4 +15,12 @@ func registerRoutes(router *gin.Engine, dependencies dependencies) {
 	customers.GET("/:id", dependencies.customerHandler.GetByID)
 	customers.PUT("/:id", dependencies.customerHandler.Update)
 	customers.DELETE("/:id", dependencies.customerHandler.Delete)
+
+	sales := router.Group("/sales", dependencies.authMiddleware.Authenticate())
+	sales.POST("", dependencies.saleHandler.Create)
+	sales.GET("", dependencies.saleHandler.List)
+	sales.GET("/period", dependencies.saleHandler.ListByPeriod)
+	sales.GET("/:id", dependencies.saleHandler.GetByID)
+	sales.PATCH("/:id/status", dependencies.saleHandler.UpdateStatus)
+	sales.DELETE("/:id", dependencies.saleHandler.Delete)
 }
