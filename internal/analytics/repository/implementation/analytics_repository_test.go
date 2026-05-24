@@ -119,6 +119,16 @@ func TestAnalyticsRepositoryDefaultsToApprovedStatus(t *testing.T) {
 	}
 }
 
+func TestPeriodExpressionUsesPostgresDateFormatting(t *testing.T) {
+	if got := periodExpression(domain.GroupByDaily, "postgres"); got != "to_char(sales.sale_date, 'YYYY-MM-DD')" {
+		t.Fatalf("unexpected daily expression: %s", got)
+	}
+
+	if got := periodExpression(domain.GroupByMonthly, "postgres"); got != "to_char(sales.sale_date, 'YYYY-MM')" {
+		t.Fatalf("unexpected monthly expression: %s", got)
+	}
+}
+
 func newAnalyticsTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 

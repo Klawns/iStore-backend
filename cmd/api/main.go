@@ -1,7 +1,7 @@
 package main
 
 import (
-	sqliteDB "istore/pkg/database/sqlite"
+	postgresDB "istore/pkg/database/postgres"
 	"log"
 
 	"github.com/gin-gonic/gin"
@@ -13,7 +13,7 @@ func main() {
 		log.Println("error loading .env file")
 	}
 
-	db, err := sqliteDB.Connect(getEnv("DB_PATH", "istore.db"))
+	db, err := postgresDB.Connect(getDatabaseDSN())
 	if err != nil {
 		log.Fatalf("error connecting to database: %v", err)
 	}

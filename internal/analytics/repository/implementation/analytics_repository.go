@@ -53,7 +53,7 @@ func (r *analyticsRepository) GetDashboardMetrics(filter domain.AnalyticsFilter)
 func (r *analyticsRepository) GetRevenue(filter domain.AnalyticsFilter) ([]domain.FinancialMetric, error) {
 	var metrics []entity.FinancialMetricProjection
 	query := applyAnalyticsSaleFilters(r.db.Table("sales"), filter).
-		Select(periodExpression(filter.GroupBy) + " AS period, COALESCE(SUM(total_value), 0) AS revenue").
+		Select(periodExpression(filter.GroupBy, r.db.Dialector.Name()) + " AS period, COALESCE(SUM(total_value), 0) AS revenue").
 		Group("period").
 		Order("period ASC")
 
@@ -68,7 +68,7 @@ func (r *analyticsRepository) GetProfit(filter domain.AnalyticsFilter) ([]domain
 	var metrics []entity.FinancialMetricProjection
 	query := applyAnalyticsSaleFilters(r.db.Table("sales"), filter).
 		Joins("JOIN sale_items ON sale_items.sale_id = sales.id").
-		Select(periodExpression(filter.GroupBy) + " AS period, COALESCE(SUM((sale_items.sale_price - sale_items.cost_price) * sale_items.quantity), 0) AS profit").
+		Select(periodExpression(filter.GroupBy, r.db.Dialector.Name()) + " AS period, COALESCE(SUM((sale_items.sale_price - sale_items.cost_price) * sale_items.quantity), 0) AS profit").
 		Group("period").
 		Order("period ASC")
 
@@ -208,10 +208,18 @@ func statusOrDefault(status saleDomain.PaymentStatus) saleDomain.PaymentStatus {
 	return status
 }
 
-func periodExpression(groupBy string) string {
-	if groupBy == domain.GroupByMonthly {
-		return "strftime('%Y-%m', sales.sale_date)"
+func periodExpression(groupBy string, dialect string) string {
+	if dialect == "sqlite" {
+		if groupBy == domain.GroupByMonthly {
+			return "strftime('%Y-%m', sales.sale_date)"
+		}
+
+		return "strftime('%Y-%m-%d', sales.sale_date)"
 	}
 
-	return "strftime('%Y-%m-%d', sales.sale_date)"
+	if groupBy == domain.GroupByMonthly {
+		return "to_char(sales.sale_date, 'YYYY-MM')"
+	}
+
+	return "to_char(sales.sale_date, 'YYYY-MM-DD')"
 }
