@@ -151,17 +151,19 @@ func filterFromQuery(ctx *gin.Context) (domain.AnalyticsFilter, *rest_err.RestEr
 	}
 
 	status := saleDomain.PaymentStatus(strings.ToUpper(strings.TrimSpace(ctx.Query("status"))))
+	paymentType := saleDomain.PaymentType(strings.ToUpper(strings.TrimSpace(ctx.Query("paymentType"))))
 	groupBy := strings.ToLower(strings.TrimSpace(ctx.Query("groupBy")))
 	if groupBy == "" {
 		groupBy = strings.ToLower(strings.TrimSpace(ctx.Query("group")))
 	}
 
 	return domain.AnalyticsFilter{
-		StartDate: start,
-		EndDate:   end,
-		Limit:     limit,
-		Status:    status,
-		GroupBy:   groupBy,
+		StartDate:   start,
+		EndDate:     end,
+		Limit:       limit,
+		Status:      status,
+		PaymentType: paymentType,
+		GroupBy:     groupBy,
 	}, nil
 }
 

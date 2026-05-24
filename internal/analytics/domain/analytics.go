@@ -11,11 +11,12 @@ const (
 )
 
 type AnalyticsFilter struct {
-	StartDate time.Time
-	EndDate   time.Time
-	Limit     int
-	Status    saleDomain.PaymentStatus
-	GroupBy   string
+	StartDate   time.Time
+	EndDate     time.Time
+	Limit       int
+	Status      saleDomain.PaymentStatus
+	PaymentType saleDomain.PaymentType
+	GroupBy     string
 }
 
 type DashboardMetrics struct {

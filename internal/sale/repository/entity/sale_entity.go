@@ -14,8 +14,11 @@ type SaleEntity struct {
 	PaymentStatus saleDomain.PaymentStatus      `gorm:"column:payment_status;not null"`
 	PaymentType   saleDomain.PaymentType        `gorm:"column:payment_type;not null"`
 	SaleDate      time.Time                     `gorm:"column:sale_date;not null"`
+	Installments  *int                          `gorm:"column:installments"`
+	BillingDay    *int                          `gorm:"column:billing_day"`
 
-	Items []SaleItemEntity `gorm:"foreignKey:SaleID;constraint:OnDelete:CASCADE"`
+	Items            []SaleItemEntity        `gorm:"foreignKey:SaleID;constraint:OnDelete:CASCADE"`
+	InstallmentsList []SaleInstallmentEntity `gorm:"foreignKey:SaleID;constraint:OnDelete:CASCADE"`
 }
 
 func (SaleEntity) TableName() string {
@@ -43,6 +46,8 @@ func FromSaleDomain(sale *saleDomain.Sale) *SaleEntity {
 		PaymentStatus: sale.PaymentStatus,
 		PaymentType:   sale.PaymentType,
 		SaleDate:      sale.SaleDate,
+		Installments:  sale.Installments,
+		BillingDay:    sale.BillingDay,
 		Items:         items,
 	}
 }
@@ -60,10 +65,13 @@ func (s *SaleEntity) ToDomain() *saleDomain.Sale {
 	return &saleDomain.Sale{
 		ID:            s.ID,
 		CustomerID:    s.CustomerID,
+		CustomerName:  s.Customer.Name,
 		TotalValue:    s.TotalValue,
 		PaymentStatus: s.PaymentStatus,
 		PaymentType:   s.PaymentType,
 		SaleDate:      s.SaleDate,
+		Installments:  s.Installments,
+		BillingDay:    s.BillingDay,
 		Items:         items,
 	}
 }

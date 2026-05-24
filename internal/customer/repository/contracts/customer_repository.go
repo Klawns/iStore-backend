@@ -8,4 +8,5 @@ type CustomerRepository interface {
 	Delete(id int) error
 	FindByID(id int) (*domain.Customer, error)
 	FindAll() ([]domain.Customer, error)
+	List(filter domain.CustomerListFilter) (*domain.CustomerListResult, error)
 }

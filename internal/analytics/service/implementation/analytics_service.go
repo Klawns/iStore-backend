@@ -152,6 +152,10 @@ func normalizeFilter(filter domain.AnalyticsFilter) (domain.AnalyticsFilter, *re
 		return domain.AnalyticsFilter{}, rest_err.NewBadRequestError("Status de pagamento invalido")
 	}
 
+	if filter.PaymentType != "" && !isValidPaymentType(filter.PaymentType) {
+		return domain.AnalyticsFilter{}, rest_err.NewBadRequestError("Tipo de pagamento invalido")
+	}
+
 	if filter.GroupBy == "" {
 		filter.GroupBy = domain.GroupByDaily
 	}
@@ -165,6 +169,15 @@ func normalizeFilter(filter domain.AnalyticsFilter) (domain.AnalyticsFilter, *re
 func isValidPaymentStatus(status saleDomain.PaymentStatus) bool {
 	switch status {
 	case saleDomain.PaymentPending, saleDomain.PaymentApproved, saleDomain.PaymentCanceled:
+		return true
+	default:
+		return false
+	}
+}
+
+func isValidPaymentType(paymentType saleDomain.PaymentType) bool {
+	switch paymentType {
+	case saleDomain.Pix, saleDomain.Money, saleDomain.CreditCard, saleDomain.DebitCard:
 		return true
 	default:
 		return false

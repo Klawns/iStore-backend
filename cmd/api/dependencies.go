@@ -12,6 +12,7 @@ import (
 	customerServiceImplementation "istore/internal/customer/service/implementation"
 	saleHandler "istore/internal/sale/handler"
 	saleRepositoryImplementation "istore/internal/sale/repository/implementation"
+	saleServiceContract "istore/internal/sale/service/contract"
 	saleServiceImplementation "istore/internal/sale/service/implementation"
 	userHandler "istore/internal/users/handler"
 	userRepositoryImplementation "istore/internal/users/repository/implementation"
@@ -26,6 +27,7 @@ type dependencies struct {
 	authMiddleware   *authMiddleware.AuthMiddleware
 	customerHandler  *customerHandler.CustomerHandler
 	saleHandler      *saleHandler.SaleHandler
+	saleService      saleServiceContract.SaleService
 	userHandler      *userHandler.UserHandler
 }
 
@@ -52,6 +54,7 @@ func buildDependencies(db *gorm.DB) dependencies {
 		authMiddleware:   authMiddleware.NewAuthMiddleware(jwtProvider, cookieManager),
 		customerHandler:  customerHandler.NewCustomerHandler(customerService),
 		saleHandler:      saleHandler.NewSaleHandler(saleService),
+		saleService:      saleService,
 		userHandler:      userHandler.NewUserHandler(userService),
 	}
 }

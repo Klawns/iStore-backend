@@ -10,6 +10,8 @@ type SaleRequest struct {
 	TipoPagamento   saleDomain.PaymentType   `json:"paymentType" validate:"required"`
 	StatusPagamento saleDomain.PaymentStatus `json:"paymentStatus" validate:"required"`
 	SaleDate        time.Time                `json:"saleDate"`
+	Installments    *int                     `json:"installments"`
+	BillingDay      *int                     `json:"billingDay"`
 	Itens           []SaleItemRequest        `json:"items" validate:"required,min=1,dive"`
 }
 
@@ -23,4 +25,9 @@ type SaleItemRequest struct {
 
 type SaleStatusRequest struct {
 	Status saleDomain.PaymentStatus `json:"status" validate:"required"`
+}
+
+type SaleInstallmentStatusRequest struct {
+	Status saleDomain.SaleInstallmentStatus `json:"status" validate:"required"`
+	Notes  string                           `json:"notes"`
 }

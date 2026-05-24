@@ -12,6 +12,8 @@ type SaleRepository interface {
 
 	FindAll() ([]domain.Sale, error)
 
+	List(filter domain.SaleListFilter) (*domain.SaleListResult, error)
+
 	ListByPeriod(
 		start time.Time,
 		end time.Time,
@@ -23,4 +25,10 @@ type SaleRepository interface {
 	) error
 
 	Delete(id int) error
+
+	ListInstallmentAlerts(now time.Time, windowDays int) ([]domain.SaleInstallment, error)
+
+	ListInstallmentsBySaleID(saleID int) ([]domain.SaleInstallment, error)
+
+	UpdateInstallmentStatus(id int, status domain.SaleInstallmentStatus, notes string, validatedAt time.Time) (*domain.SaleInstallment, error)
 }

@@ -37,6 +37,10 @@ func (s *SaleService) Create(input *contract.CreateSaleInput) (*domain.Sale, *re
 		return nil, rest_err.NewBadRequestError("Status de pagamento inválido")
 	}
 
+	if restErr := normalizeCardFields(input); restErr != nil {
+		return nil, restErr
+	}
+
 	if len(input.Itens) == 0 {
 		return nil, rest_err.NewBadRequestError("Venda deve possuir ao menos um item")
 	}
@@ -46,6 +50,8 @@ func (s *SaleService) Create(input *contract.CreateSaleInput) (*domain.Sale, *re
 		PaymentType:   input.TipoPagamento,
 		PaymentStatus: input.StatusPagamento,
 		SaleDate:      input.SaleDate,
+		Installments:  input.Installments,
+		BillingDay:    input.BillingDay,
 		Items:         make([]domain.SaleItem, len(input.Itens)),
 	}
 
@@ -77,8 +83,8 @@ func (s *SaleService) Create(input *contract.CreateSaleInput) (*domain.Sale, *re
 	}
 
 	sale.TotalValue = sale.CalculateTotal()
+	sale.InstallmentsList = buildSaleInstallments(sale)
 
-	// Agora, podemos usar o repositório para salvar a venda no banco de dados
 	err := s.repository.Create(sale)
 	if err != nil {
 		logger.Error("Erro ao criar venda: ", err, zap.String("customer_id", strconv.Itoa(int(input.ClienteID))), zap.String("payment_type", string(input.TipoPagamento)), zap.String("payment_status", string(input.StatusPagamento)), zap.String("journey", "CreateSale"))
@@ -105,15 +111,55 @@ func (s *SaleService) GetByID(id int) (*domain.Sale, *rest_err.RestErr) {
 	return sale, nil
 }
 
-func (s *SaleService) List() ([]domain.Sale, *rest_err.RestErr) {
-	// Primeiro, precisamos usar o repositório para buscar todas as vendas
-	sales, err := s.repository.FindAll()
+func (s *SaleService) List(input contract.ListSalesInput) (*domain.SaleListResult, *rest_err.RestErr) {
+	if input.Page <= 0 {
+		return nil, rest_err.NewBadRequestError("Pagina invalida")
+	}
+
+	if input.Limit <= 0 || input.Limit > 100 {
+		return nil, rest_err.NewBadRequestError("Limite invalido")
+	}
+
+	if input.Start != nil && input.Start.IsZero() {
+		return nil, rest_err.NewBadRequestError("Data de inicio invalida")
+	}
+
+	if input.End != nil && input.End.IsZero() {
+		return nil, rest_err.NewBadRequestError("Data de fim invalida")
+	}
+
+	if input.Start != nil && input.End != nil && input.End.Before(*input.Start) {
+		return nil, rest_err.NewBadRequestError("Data de termino deve ser posterior a data de inicio")
+	}
+
+	if input.Status != nil && !isValidPaymentStatus(*input.Status) {
+		return nil, rest_err.NewBadRequestError("Status de pagamento invalido")
+	}
+
+	if input.PaymentType != nil && !isValidPaymentType(*input.PaymentType) {
+		return nil, rest_err.NewBadRequestError("Tipo de pagamento invalido")
+	}
+
+	if input.CustomerID != nil && *input.CustomerID <= 0 {
+		return nil, rest_err.NewBadRequestError("Cliente invalido")
+	}
+
+	result, err := s.repository.List(domain.SaleListFilter{
+		Page:          input.Page,
+		Limit:         input.Limit,
+		Start:         input.Start,
+		End:           input.End,
+		PaymentStatus: input.Status,
+		PaymentType:   input.PaymentType,
+		CustomerID:    input.CustomerID,
+		Search:        input.Search,
+	})
 	if err != nil {
 		logger.Error("Erro ao listar vendas: ", err, zap.String("journey", "ListSales"))
 		return nil, rest_err.NewInternalServerError("Erro ao listar vendas")
 	}
 
-	return sales, nil
+	return result, nil
 }
 
 func (s *SaleService) ListByPeriod(start time.Time, end time.Time) ([]domain.Sale, *rest_err.RestErr) {
@@ -185,6 +231,55 @@ func (s *SaleService) Delete(id int) *rest_err.RestErr {
 	return nil
 }
 
+func (s *SaleService) ListInstallmentAlerts(now time.Time, windowDays int) ([]domain.SaleInstallment, *rest_err.RestErr) {
+	if windowDays <= 0 {
+		windowDays = 7
+	}
+
+	installments, err := s.repository.ListInstallmentAlerts(now, windowDays)
+	if err != nil {
+		logger.Error("Erro ao listar parcelas para acompanhamento: ", err, zap.String("journey", "ListInstallmentAlerts"))
+		return nil, rest_err.NewInternalServerError("Erro ao listar parcelas")
+	}
+
+	return installments, nil
+}
+
+func (s *SaleService) ListInstallmentsBySaleID(saleID int) ([]domain.SaleInstallment, *rest_err.RestErr) {
+	if saleID <= 0 {
+		return nil, rest_err.NewBadRequestError("ID inválido")
+	}
+
+	installments, err := s.repository.ListInstallmentsBySaleID(saleID)
+	if err != nil {
+		logger.Error("Erro ao listar parcelas da venda: ", err, zap.Int("sale_id", saleID), zap.String("journey", "ListInstallmentsBySaleID"))
+		return nil, rest_err.NewInternalServerError("Erro ao listar parcelas")
+	}
+
+	return installments, nil
+}
+
+func (s *SaleService) UpdateInstallmentStatus(id int, input contract.UpdateInstallmentStatusInput) (*domain.SaleInstallment, *rest_err.RestErr) {
+	if id <= 0 {
+		return nil, rest_err.NewBadRequestError("ID inválido")
+	}
+
+	if !isValidInstallmentStatus(input.Status) || input.Status == domain.InstallmentPending {
+		return nil, rest_err.NewBadRequestError("Status da parcela inválido")
+	}
+
+	installment, err := s.repository.UpdateInstallmentStatus(id, input.Status, input.Notes, time.Now())
+	if err != nil {
+		logger.Error("Erro ao atualizar parcela: ", err, zap.Int("installment_id", id), zap.String("status", string(input.Status)), zap.String("journey", "UpdateInstallmentStatus"))
+		return nil, rest_err.NewInternalServerError("Erro ao atualizar parcela")
+	}
+	if installment == nil {
+		return nil, rest_err.NewNotFoundError("Parcela não encontrada")
+	}
+
+	return installment, nil
+}
+
 func isValidPaymentStatus(status domain.PaymentStatus) bool {
 	switch status {
 	case domain.PaymentPending, domain.PaymentApproved, domain.PaymentCanceled:
@@ -196,9 +291,112 @@ func isValidPaymentStatus(status domain.PaymentStatus) bool {
 
 func isValidPaymentType(paymentType domain.PaymentType) bool {
 	switch paymentType {
-	case domain.Pix, domain.Money, domain.Card:
+	case domain.Pix, domain.Money, domain.CreditCard, domain.DebitCard:
 		return true
 	default:
 		return false
 	}
+}
+
+func isValidInstallmentStatus(status domain.SaleInstallmentStatus) bool {
+	switch status {
+	case domain.InstallmentPending, domain.InstallmentPaid, domain.InstallmentUnpaid:
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeCardFields(input *contract.CreateSaleInput) *rest_err.RestErr {
+	hasInstallments := input.Installments != nil
+	hasBillingDay := input.BillingDay != nil
+
+	switch input.TipoPagamento {
+	case domain.DebitCard:
+		if hasInstallments || hasBillingDay {
+			return rest_err.NewBadRequestError("Debito nao aceita parcelas ou dia de cobranca")
+		}
+		input.StatusPagamento = domain.PaymentApproved
+	case domain.CreditCard:
+		if !hasInstallments || *input.Installments < 1 || *input.Installments > 24 {
+			return rest_err.NewBadRequestError("Credito exige parcelas entre 1 e 24")
+		}
+		if !hasBillingDay || *input.BillingDay < 1 || *input.BillingDay > 31 {
+			return rest_err.NewBadRequestError("Credito exige dia de cobranca entre 1 e 31")
+		}
+	case domain.Pix, domain.Money:
+		if hasInstallments || hasBillingDay {
+			return rest_err.NewBadRequestError("PIX e dinheiro nao aceitam parcelas ou dia de cobranca")
+		}
+	}
+
+	return nil
+}
+
+func creditCardDueDates(sale domain.Sale) []time.Time {
+	if sale.Installments == nil || sale.BillingDay == nil || *sale.Installments <= 0 {
+		return nil
+	}
+
+	first := firstBillingDate(sale.SaleDate, *sale.BillingDay)
+	dates := make([]time.Time, *sale.Installments)
+	for i := 0; i < *sale.Installments; i++ {
+		monthIndex := int(first.Month()) - 1 + i
+		year := first.Year() + monthIndex/12
+		month := time.Month(monthIndex%12 + 1)
+		dates[i] = dateWithClampedDay(year, month, *sale.BillingDay, first.Location())
+	}
+
+	return dates
+}
+
+func buildSaleInstallments(sale *domain.Sale) []domain.SaleInstallment {
+	if sale == nil || sale.PaymentType != domain.CreditCard || sale.Installments == nil || *sale.Installments <= 0 {
+		return nil
+	}
+
+	dueDates := creditCardDueDates(*sale)
+	installments := make([]domain.SaleInstallment, len(dueDates))
+	baseAmount := sale.TotalValue / len(dueDates)
+	remainder := sale.TotalValue % len(dueDates)
+
+	for i, dueDate := range dueDates {
+		amount := baseAmount
+		if i < remainder {
+			amount++
+		}
+
+		installments[i] = domain.SaleInstallment{
+			DueDate:           dueDate,
+			InstallmentNumber: i + 1,
+			TotalInstallments: len(dueDates),
+			Amount:            amount,
+			Status:            domain.InstallmentPending,
+		}
+	}
+
+	return installments
+}
+
+func firstBillingDate(saleDate time.Time, billingDay int) time.Time {
+	candidate := dateWithClampedDay(saleDate.Year(), saleDate.Month(), billingDay, saleDate.Location())
+	if !candidate.Before(dateOnly(saleDate)) {
+		return candidate
+	}
+
+	nextMonth := saleDate.AddDate(0, 1, 0)
+	return dateWithClampedDay(nextMonth.Year(), nextMonth.Month(), billingDay, saleDate.Location())
+}
+
+func dateWithClampedDay(year int, month time.Month, day int, location *time.Location) time.Time {
+	lastDay := time.Date(year, month+1, 0, 0, 0, 0, 0, location).Day()
+	if day > lastDay {
+		day = lastDay
+	}
+
+	return time.Date(year, month, day, 0, 0, 0, 0, location)
+}
+
+func dateOnly(value time.Time) time.Time {
+	return time.Date(value.Year(), value.Month(), value.Day(), 0, 0, 0, 0, value.Location())
 }

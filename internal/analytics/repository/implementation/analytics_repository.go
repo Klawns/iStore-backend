@@ -21,7 +21,7 @@ func (r *analyticsRepository) GetDashboardMetrics(filter domain.AnalyticsFilter)
 	status := statusOrDefault(filter.Status)
 
 	var totals entity.DashboardTotalsProjection
-	query := applyPeriodFilters(r.db.Table("sales"), filter).
+	query := applyPaymentTypeFilter(applyPeriodFilters(r.db.Table("sales"), filter), filter).
 		Where("payment_status = ?", status).
 		Select("COALESCE(SUM(total_value), 0) AS revenue, COUNT(*) AS approved_sales_count")
 	if err := query.Scan(&totals).Error; err != nil {
@@ -29,7 +29,7 @@ func (r *analyticsRepository) GetDashboardMetrics(filter domain.AnalyticsFilter)
 	}
 
 	var itemTotals entity.DashboardItemTotalsProjection
-	itemQuery := applyPeriodFilters(r.db.Table("sales"), filter).
+	itemQuery := applyPaymentTypeFilter(applyPeriodFilters(r.db.Table("sales"), filter), filter).
 		Joins("JOIN sale_items ON sale_items.sale_id = sales.id").
 		Where("sales.payment_status = ?", status).
 		Select("COALESCE(SUM((sale_items.sale_price - sale_items.cost_price) * sale_items.quantity), 0) AS profit, COALESCE(SUM(sale_items.quantity), 0) AS items_sold")
@@ -52,7 +52,7 @@ func (r *analyticsRepository) GetDashboardMetrics(filter domain.AnalyticsFilter)
 
 func (r *analyticsRepository) GetRevenue(filter domain.AnalyticsFilter) ([]domain.FinancialMetric, error) {
 	var metrics []entity.FinancialMetricProjection
-	query := applyStatusFilter(applyPeriodFilters(r.db.Table("sales"), filter), filter).
+	query := applyAnalyticsSaleFilters(r.db.Table("sales"), filter).
 		Select(periodExpression(filter.GroupBy) + " AS period, COALESCE(SUM(total_value), 0) AS revenue").
 		Group("period").
 		Order("period ASC")
@@ -66,7 +66,7 @@ func (r *analyticsRepository) GetRevenue(filter domain.AnalyticsFilter) ([]domai
 
 func (r *analyticsRepository) GetProfit(filter domain.AnalyticsFilter) ([]domain.FinancialMetric, error) {
 	var metrics []entity.FinancialMetricProjection
-	query := applyStatusFilter(applyPeriodFilters(r.db.Table("sales"), filter), filter).
+	query := applyAnalyticsSaleFilters(r.db.Table("sales"), filter).
 		Joins("JOIN sale_items ON sale_items.sale_id = sales.id").
 		Select(periodExpression(filter.GroupBy) + " AS period, COALESCE(SUM((sale_items.sale_price - sale_items.cost_price) * sale_items.quantity), 0) AS profit").
 		Group("period").
@@ -81,7 +81,7 @@ func (r *analyticsRepository) GetProfit(filter domain.AnalyticsFilter) ([]domain
 
 func (r *analyticsRepository) GetTopProducts(filter domain.AnalyticsFilter) ([]domain.ProductMetric, error) {
 	var metrics []entity.ProductMetricProjection
-	query := applyStatusFilter(applyPeriodFilters(r.db.Table("sales"), filter), filter).
+	query := applyAnalyticsSaleFilters(r.db.Table("sales"), filter).
 		Joins("JOIN sale_items ON sale_items.sale_id = sales.id").
 		Select(`
 			sale_items.product_name AS product_name,
@@ -102,7 +102,7 @@ func (r *analyticsRepository) GetTopProducts(filter domain.AnalyticsFilter) ([]d
 
 func (r *analyticsRepository) GetPaymentMethods(filter domain.AnalyticsFilter) ([]domain.PaymentMetric, error) {
 	var metrics []entity.PaymentMetricProjection
-	query := applyStatusFilter(applyPeriodFilters(r.db.Table("sales"), filter), filter).
+	query := applyAnalyticsSaleFilters(r.db.Table("sales"), filter).
 		Select("payment_type AS payment_type, COUNT(*) AS sales_count, COALESCE(SUM(total_value), 0) AS total_value").
 		Group("payment_type").
 		Order("total_value DESC, sales_count DESC, payment_type ASC")
@@ -120,7 +120,7 @@ func (r *analyticsRepository) GetTopCustomers(filter domain.AnalyticsFilter) ([]
 		Select("sale_id, COALESCE(SUM((sale_price - cost_price) * quantity), 0) AS profit").
 		Group("sale_id")
 
-	query := applyStatusFilter(applyPeriodFilters(r.db.Table("sales"), filter), filter).
+	query := applyAnalyticsSaleFilters(r.db.Table("sales"), filter).
 		Joins("LEFT JOIN customers ON customers.id = sales.customer_id").
 		Joins("LEFT JOIN (?) AS sale_profit ON sale_profit.sale_id = sales.id", profitBySale).
 		Select(`
@@ -142,7 +142,7 @@ func (r *analyticsRepository) GetTopCustomers(filter domain.AnalyticsFilter) ([]
 
 func (r *analyticsRepository) GetStatuses(filter domain.AnalyticsFilter) ([]domain.StatusMetric, error) {
 	var metrics []entity.StatusMetricProjection
-	query := applyPeriodFilters(r.db.Table("sales"), filter).
+	query := applyPaymentTypeFilter(applyPeriodFilters(r.db.Table("sales"), filter), filter).
 		Select("payment_status AS status, COUNT(*) AS sales_count, COALESCE(SUM(total_value), 0) AS total_value").
 		Group("payment_status").
 		Order("payment_status ASC")
@@ -156,7 +156,7 @@ func (r *analyticsRepository) GetStatuses(filter domain.AnalyticsFilter) ([]doma
 
 func (r *analyticsRepository) countSalesByStatus(filter domain.AnalyticsFilter, status saleDomain.PaymentStatus) (int, error) {
 	var count int64
-	query := applyPeriodFilters(r.db.Model(nil).Table("sales"), filter).
+	query := applyPaymentTypeFilter(applyPeriodFilters(r.db.Model(nil).Table("sales"), filter), filter).
 		Where("payment_status = ?", status)
 	if err := query.Count(&count).Error; err != nil {
 		return 0, err
@@ -176,8 +176,20 @@ func applyPeriodFilters(query *gorm.DB, filter domain.AnalyticsFilter) *gorm.DB 
 	return query
 }
 
+func applyAnalyticsSaleFilters(query *gorm.DB, filter domain.AnalyticsFilter) *gorm.DB {
+	return applyPaymentTypeFilter(applyStatusFilter(applyPeriodFilters(query, filter), filter), filter)
+}
+
 func applyStatusFilter(query *gorm.DB, filter domain.AnalyticsFilter) *gorm.DB {
 	return query.Where("sales.payment_status = ?", statusOrDefault(filter.Status))
+}
+
+func applyPaymentTypeFilter(query *gorm.DB, filter domain.AnalyticsFilter) *gorm.DB {
+	if filter.PaymentType == "" {
+		return query
+	}
+
+	return query.Where("sales.payment_type = ?", filter.PaymentType)
 }
 
 func applyLimit(query *gorm.DB, filter domain.AnalyticsFilter) *gorm.DB {

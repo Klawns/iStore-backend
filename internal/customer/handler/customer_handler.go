@@ -1,30 +1,29 @@
 package handler
 
 import (
-	"istore/internal/customer/domain"
 	"istore/internal/customer/dto/request"
 	"istore/internal/customer/dto/response"
 	serviceContracts "istore/internal/customer/service/contracts"
+	saleDomain "istore/internal/sale/domain"
 	"istore/pkg/rest_err"
 	"istore/pkg/validation"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
-// Essa struct representa o handler do customer e depende do service para aplicar as regras da aplicação.
 type CustomerHandler struct {
 	service serviceContracts.CustomerService
 }
 
-// Essa função é o construtor do handler, recebendo o service como dependência.
 func NewCustomerHandler(service serviceContracts.CustomerService) *CustomerHandler {
 	return &CustomerHandler{service: service}
 }
 
 func (h *CustomerHandler) Create(ctx *gin.Context) {
-	// Primeiro, fazemos o bind do JSON recebido para a struct de request.
 	var req request.CustomerRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		restErr := validation.ValidateUserError(err)
@@ -32,8 +31,7 @@ func (h *CustomerHandler) Create(ctx *gin.Context) {
 		return
 	}
 
-	// Segundo, chamamos o service para criar o cliente e tratar regras/erros.
-	restErr := h.service.Create(serviceContracts.CreateCustomerInput{
+	customer, restErr := h.service.Create(serviceContracts.CreateCustomerInput{
 		Name:  req.Name,
 		Phone: req.Phone,
 	})
@@ -42,22 +40,16 @@ func (h *CustomerHandler) Create(ctx *gin.Context) {
 		return
 	}
 
-	// Terceiro, devolvemos os dados criados no formato de response.
-	ctx.JSON(http.StatusCreated, response.FromDomain(&domain.Customer{
-		Name:  req.Name,
-		Phone: req.Phone,
-	}))
+	ctx.JSON(http.StatusCreated, response.FromDomain(customer))
 }
 
 func (h *CustomerHandler) Update(ctx *gin.Context) {
-	// Primeiro, extraímos o ID da URL.
 	id, restErr := getIDParam(ctx)
 	if restErr != nil {
 		ctx.JSON(restErr.Code, restErr)
 		return
 	}
 
-	// Segundo, fazemos o bind do JSON recebido para a struct de request.
 	var req request.CustomerRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		restErr := validation.ValidateUserError(err)
@@ -65,8 +57,7 @@ func (h *CustomerHandler) Update(ctx *gin.Context) {
 		return
 	}
 
-	// Terceiro, chamamos o service para atualizar com regra de update parcial.
-	restErr = h.service.Update(id, serviceContracts.UpdateCustomerInput{
+	customer, restErr := h.service.Update(id, serviceContracts.UpdateCustomerInput{
 		Name:  req.Name,
 		Phone: req.Phone,
 	})
@@ -75,18 +66,16 @@ func (h *CustomerHandler) Update(ctx *gin.Context) {
 		return
 	}
 
-	ctx.Status(http.StatusNoContent)
+	ctx.JSON(http.StatusOK, response.FromDomain(customer))
 }
 
 func (h *CustomerHandler) Delete(ctx *gin.Context) {
-	// Primeiro, extraímos o ID da URL.
 	id, restErr := getIDParam(ctx)
 	if restErr != nil {
 		ctx.JSON(restErr.Code, restErr)
 		return
 	}
 
-	// Segundo, chamamos o service para validar existência e deletar.
 	restErr = h.service.Delete(id)
 	if restErr != nil {
 		ctx.JSON(restErr.Code, restErr)
@@ -97,14 +86,12 @@ func (h *CustomerHandler) Delete(ctx *gin.Context) {
 }
 
 func (h *CustomerHandler) GetByID(ctx *gin.Context) {
-	// Primeiro, extraímos o ID da URL.
 	id, restErr := getIDParam(ctx)
 	if restErr != nil {
 		ctx.JSON(restErr.Code, restErr)
 		return
 	}
 
-	// Segundo, buscamos o cliente pelo service.
 	customer, restErr := h.service.GetByID(id)
 	if restErr != nil {
 		ctx.JSON(restErr.Code, restErr)
@@ -115,20 +102,19 @@ func (h *CustomerHandler) GetByID(ctx *gin.Context) {
 }
 
 func (h *CustomerHandler) List(ctx *gin.Context) {
-	// Primeiro, chamamos o service para listar os clientes.
-	customers, restErr := h.service.List()
+	input, restErr := parseListCustomersQuery(ctx)
 	if restErr != nil {
 		ctx.JSON(restErr.Code, restErr)
 		return
 	}
 
-	// Segundo, convertemos a lista para o formato de response.
-	responses := make([]response.CustomerResponse, len(customers))
-	for i, customer := range customers {
-		responses[i] = *response.FromDomain(&customer)
+	result, restErr := h.service.List(input)
+	if restErr != nil {
+		ctx.JSON(restErr.Code, restErr)
+		return
 	}
 
-	ctx.JSON(http.StatusOK, responses)
+	ctx.JSON(http.StatusOK, response.ListFromDomain(result))
 }
 
 func getIDParam(ctx *gin.Context) (int, *rest_err.RestErr) {
@@ -138,4 +124,84 @@ func getIDParam(ctx *gin.Context) (int, *rest_err.RestErr) {
 	}
 
 	return id, nil
+}
+
+func parseListCustomersQuery(ctx *gin.Context) (serviceContracts.ListCustomersInput, *rest_err.RestErr) {
+	page, restErr := parsePositiveIntQuery(ctx.Query("page"), 1, "Pagina invalida")
+	if restErr != nil {
+		return serviceContracts.ListCustomersInput{}, restErr
+	}
+
+	limit, restErr := parsePositiveIntQuery(ctx.Query("limit"), 10, "Limite invalido")
+	if restErr != nil {
+		return serviceContracts.ListCustomersInput{}, restErr
+	}
+
+	start, restErr := parseOptionalDateQuery(ctx.Query("start"), false)
+	if restErr != nil {
+		return serviceContracts.ListCustomersInput{}, restErr
+	}
+
+	end, restErr := parseOptionalDateQuery(ctx.Query("end"), true)
+	if restErr != nil {
+		return serviceContracts.ListCustomersInput{}, restErr
+	}
+
+	var status *saleDomain.PaymentStatus
+	if rawStatus := strings.TrimSpace(ctx.Query("status")); rawStatus != "" {
+		value := saleDomain.PaymentStatus(rawStatus)
+		status = &value
+	}
+
+	var paymentType *saleDomain.PaymentType
+	if rawPaymentType := strings.TrimSpace(ctx.Query("paymentType")); rawPaymentType != "" {
+		value := saleDomain.PaymentType(rawPaymentType)
+		paymentType = &value
+	}
+
+	return serviceContracts.ListCustomersInput{
+		Page:        page,
+		Limit:       limit,
+		Start:       start,
+		End:         end,
+		Status:      status,
+		PaymentType: paymentType,
+		Search:      strings.TrimSpace(ctx.Query("search")),
+	}, nil
+}
+
+func parsePositiveIntQuery(value string, defaultValue int, message string) (int, *rest_err.RestErr) {
+	if strings.TrimSpace(value) == "" {
+		return defaultValue, nil
+	}
+
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		return 0, rest_err.NewBadRequestError(message)
+	}
+
+	return parsed, nil
+}
+
+func parseOptionalDateQuery(value string, endOfDay bool) (*time.Time, *rest_err.RestErr) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err == nil {
+		return &parsed, nil
+	}
+
+	parsed, err = time.Parse("2006-01-02", value)
+	if err != nil {
+		return nil, rest_err.NewBadRequestError("Formato de data invalido")
+	}
+
+	if endOfDay {
+		parsed = parsed.AddDate(0, 0, 1).Add(-time.Nanosecond)
+	}
+
+	return &parsed, nil
 }
