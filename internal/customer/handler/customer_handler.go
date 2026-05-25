@@ -1,6 +1,7 @@
 package handler
 
 import (
+	authMiddleware "istore/internal/auth/middleware"
 	"istore/internal/customer/dto/request"
 	"istore/internal/customer/dto/response"
 	serviceContracts "istore/internal/customer/service/contracts"
@@ -24,6 +25,12 @@ func NewCustomerHandler(service serviceContracts.CustomerService) *CustomerHandl
 }
 
 func (h *CustomerHandler) Create(ctx *gin.Context) {
+	payload, restErr := authMiddleware.GetAuthPayload(ctx)
+	if restErr != nil {
+		ctx.JSON(restErr.Code, restErr)
+		return
+	}
+
 	var req request.CustomerRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		restErr := validation.ValidateUserError(err)
@@ -32,8 +39,9 @@ func (h *CustomerHandler) Create(ctx *gin.Context) {
 	}
 
 	customer, restErr := h.service.Create(serviceContracts.CreateCustomerInput{
-		Name:  req.Name,
-		Phone: req.Phone,
+		UserID: payload.UserID,
+		Name:   req.Name,
+		Phone:  req.Phone,
 	})
 	if restErr != nil {
 		ctx.JSON(restErr.Code, restErr)
@@ -44,6 +52,12 @@ func (h *CustomerHandler) Create(ctx *gin.Context) {
 }
 
 func (h *CustomerHandler) Update(ctx *gin.Context) {
+	payload, restErr := authMiddleware.GetAuthPayload(ctx)
+	if restErr != nil {
+		ctx.JSON(restErr.Code, restErr)
+		return
+	}
+
 	id, restErr := getIDParam(ctx)
 	if restErr != nil {
 		ctx.JSON(restErr.Code, restErr)
@@ -58,8 +72,9 @@ func (h *CustomerHandler) Update(ctx *gin.Context) {
 	}
 
 	customer, restErr := h.service.Update(id, serviceContracts.UpdateCustomerInput{
-		Name:  req.Name,
-		Phone: req.Phone,
+		UserID: payload.UserID,
+		Name:   req.Name,
+		Phone:  req.Phone,
 	})
 	if restErr != nil {
 		ctx.JSON(restErr.Code, restErr)
@@ -70,13 +85,19 @@ func (h *CustomerHandler) Update(ctx *gin.Context) {
 }
 
 func (h *CustomerHandler) Delete(ctx *gin.Context) {
+	payload, restErr := authMiddleware.GetAuthPayload(ctx)
+	if restErr != nil {
+		ctx.JSON(restErr.Code, restErr)
+		return
+	}
+
 	id, restErr := getIDParam(ctx)
 	if restErr != nil {
 		ctx.JSON(restErr.Code, restErr)
 		return
 	}
 
-	restErr = h.service.Delete(id)
+	restErr = h.service.Delete(payload.UserID, id)
 	if restErr != nil {
 		ctx.JSON(restErr.Code, restErr)
 		return
@@ -85,14 +106,43 @@ func (h *CustomerHandler) Delete(ctx *gin.Context) {
 	ctx.Status(http.StatusNoContent)
 }
 
+func (h *CustomerHandler) DeleteMany(ctx *gin.Context) {
+	payload, restErr := authMiddleware.GetAuthPayload(ctx)
+	if restErr != nil {
+		ctx.JSON(restErr.Code, restErr)
+		return
+	}
+
+	var req request.BulkDeleteCustomersRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		restErr := validation.ValidateUserError(err)
+		ctx.JSON(restErr.Code, restErr)
+		return
+	}
+
+	deleted, restErr := h.service.DeleteMany(payload.UserID, req.IDs)
+	if restErr != nil {
+		ctx.JSON(restErr.Code, restErr)
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"deleted": deleted})
+}
+
 func (h *CustomerHandler) GetByID(ctx *gin.Context) {
+	payload, restErr := authMiddleware.GetAuthPayload(ctx)
+	if restErr != nil {
+		ctx.JSON(restErr.Code, restErr)
+		return
+	}
+
 	id, restErr := getIDParam(ctx)
 	if restErr != nil {
 		ctx.JSON(restErr.Code, restErr)
 		return
 	}
 
-	customer, restErr := h.service.GetByID(id)
+	customer, restErr := h.service.GetByID(payload.UserID, id)
 	if restErr != nil {
 		ctx.JSON(restErr.Code, restErr)
 		return
@@ -102,12 +152,19 @@ func (h *CustomerHandler) GetByID(ctx *gin.Context) {
 }
 
 func (h *CustomerHandler) List(ctx *gin.Context) {
+	payload, restErr := authMiddleware.GetAuthPayload(ctx)
+	if restErr != nil {
+		ctx.JSON(restErr.Code, restErr)
+		return
+	}
+
 	input, restErr := parseListCustomersQuery(ctx)
 	if restErr != nil {
 		ctx.JSON(restErr.Code, restErr)
 		return
 	}
 
+	input.UserID = payload.UserID
 	result, restErr := h.service.List(input)
 	if restErr != nil {
 		ctx.JSON(restErr.Code, restErr)

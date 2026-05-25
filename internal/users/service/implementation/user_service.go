@@ -7,9 +7,15 @@ import (
 	"istore/pkg/logger"
 	"istore/pkg/rest_err"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
+)
+
+const (
+	currentPrivacyPolicyVersion = "2026-05-25"
+	currentTermsVersion         = "2026-05-25"
 )
 
 type userService struct {
@@ -22,6 +28,18 @@ func NewUserService(repository repository.UserRepository) contracts.UserService 
 
 func (s *userService) Create(input contracts.CreateUserInput) (*domain.User, *rest_err.RestErr) {
 	email := strings.TrimSpace(strings.ToLower(input.Email))
+	if !input.AcceptPrivacyPolicy || !input.AcceptTerms {
+		return nil, rest_err.NewBadRequestError("privacy policy and terms acceptance is required")
+	}
+
+	privacyVersion := strings.TrimSpace(input.PrivacyPolicyVersion)
+	if privacyVersion == "" {
+		privacyVersion = currentPrivacyPolicyVersion
+	}
+	termsVersion := strings.TrimSpace(input.TermsVersion)
+	if termsVersion == "" {
+		termsVersion = currentTermsVersion
+	}
 
 	existingUser, err := s.repository.FindByEmail(email)
 	if err != nil {
@@ -29,7 +47,7 @@ func (s *userService) Create(input contracts.CreateUserInput) (*domain.User, *re
 		return nil, rest_err.NewInternalServerError("error creating user")
 	}
 	if existingUser != nil {
-		return nil, rest_err.NewBadRequestError("email already registered")
+		return nil, rest_err.NewBadRequestError("Nao foi possivel criar conta com os dados informados")
 	}
 
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
@@ -39,8 +57,12 @@ func (s *userService) Create(input contracts.CreateUserInput) (*domain.User, *re
 	}
 
 	user := &domain.User{
-		Email:        email,
-		PasswordHash: string(passwordHash),
+		Email:                email,
+		PasswordHash:         string(passwordHash),
+		PrivacyPolicyVersion: privacyVersion,
+		PrivacyAcceptedAt:    ptrTime(time.Now().UTC()),
+		TermsVersion:         termsVersion,
+		TermsAcceptedAt:      ptrTime(time.Now().UTC()),
 	}
 
 	if err := s.repository.Create(user); err != nil {
@@ -49,6 +71,10 @@ func (s *userService) Create(input contracts.CreateUserInput) (*domain.User, *re
 	}
 
 	return user, nil
+}
+
+func ptrTime(value time.Time) *time.Time {
+	return &value
 }
 
 func (s *userService) FindByID(id uint) (*domain.User, *rest_err.RestErr) {
@@ -62,4 +88,30 @@ func (s *userService) FindByID(id uint) (*domain.User, *rest_err.RestErr) {
 	}
 
 	return user, nil
+}
+
+func (s *userService) DeleteOwnAccount(userID uint, password string) *rest_err.RestErr {
+	if userID == 0 {
+		return rest_err.NewUnauthorizedRequestError("invalid auth payload")
+	}
+
+	user, err := s.repository.FindByID(userID)
+	if err != nil {
+		logger.Error("error finding user by id", err, zap.Uint("user_id", userID), zap.String("journey", "DeleteOwnAccount"))
+		return rest_err.NewInternalServerError("error deleting user")
+	}
+	if user == nil {
+		return rest_err.NewNotFoundError("user not found")
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+		return rest_err.NewUnauthorizedRequestError("Senha invalida")
+	}
+
+	if err := s.repository.DeleteOwnAccount(userID); err != nil {
+		logger.Error("error deleting user account", err, zap.Uint("user_id", userID), zap.String("journey", "DeleteOwnAccount"))
+		return rest_err.NewInternalServerError("error deleting user")
+	}
+
+	return nil
 }

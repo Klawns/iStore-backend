@@ -7,6 +7,7 @@ import (
 
 type CustomerEntity struct {
 	ID        int    `gorm:"primaryKey"`
+	UserID    uint   `gorm:"column:user_id;index"`
 	Name      string `gorm:"not null"`
 	Phone     string
 	CreatedAt time.Time
@@ -23,9 +24,10 @@ func FromDomain(customer *domain.Customer) *CustomerEntity {
 		return nil
 	}
 	return &CustomerEntity{
-		ID:    customer.ID,
-		Name:  customer.Name,
-		Phone: customer.Phone,
+		ID:     customer.ID,
+		UserID: customer.UserID,
+		Name:   customer.Name,
+		Phone:  customer.Phone,
 	}
 }
 
@@ -36,8 +38,9 @@ func (u *CustomerEntity) ToDomain() *domain.Customer {
 	}
 
 	return &domain.Customer{
-		ID:    u.ID,
-		Name:  u.Name,
-		Phone: u.Phone,
+		ID:     u.ID,
+		UserID: u.UserID,
+		Name:   u.Name,
+		Phone:  u.Phone,
 	}
 }

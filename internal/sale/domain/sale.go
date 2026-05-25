@@ -27,6 +27,7 @@ const (
 
 type Sale struct {
 	ID            int
+	UserID        uint
 	CustomerID    int
 	CustomerName  string
 	TotalValue    int // centavos
@@ -41,6 +42,7 @@ type Sale struct {
 }
 
 type SaleListFilter struct {
+	UserID        uint
 	Page          int
 	Limit         int
 	Start         *time.Time

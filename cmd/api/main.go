@@ -24,7 +24,12 @@ func main() {
 		log.Fatalf("error running migrations: %v", err)
 	}
 
-	dependencies := buildDependencies(db)
+	jwtSecret, err := getJWTSecret()
+	if err != nil {
+		log.Fatalf("error loading JWT secret: %v", err)
+	}
+
+	dependencies := buildDependencies(db, jwtSecret)
 
 	router := gin.Default()
 	registerRoutes(router, dependencies)

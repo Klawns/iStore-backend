@@ -5,18 +5,20 @@ import "github.com/gin-gonic/gin"
 func registerRoutes(router *gin.Engine, dependencies dependencies) {
 	router.POST("/users", dependencies.userHandler.Create)
 	router.GET("/users/me", dependencies.authMiddleware.Authenticate(), dependencies.userHandler.Me)
+	router.DELETE("/users/me", dependencies.authMiddleware.Authenticate(), dependencies.authMiddleware.CSRF(), dependencies.userHandler.DeleteMe)
 
 	router.POST("/auth/sign-in", dependencies.authHandler.SignIn)
-	router.POST("/auth/sign-out", dependencies.authHandler.SignOut)
+	router.POST("/auth/sign-out", dependencies.authMiddleware.CSRF(), dependencies.authHandler.SignOut)
 
-	customers := router.Group("/customers", dependencies.authMiddleware.Authenticate())
+	customers := router.Group("/customers", dependencies.authMiddleware.Authenticate(), dependencies.authMiddleware.CSRF())
 	customers.POST("", dependencies.customerHandler.Create)
 	customers.GET("", dependencies.customerHandler.List)
+	customers.DELETE("/bulk", dependencies.customerHandler.DeleteMany)
 	customers.GET("/:id", dependencies.customerHandler.GetByID)
 	customers.PUT("/:id", dependencies.customerHandler.Update)
 	customers.DELETE("/:id", dependencies.customerHandler.Delete)
 
-	sales := router.Group("/sales", dependencies.authMiddleware.Authenticate())
+	sales := router.Group("/sales", dependencies.authMiddleware.Authenticate(), dependencies.authMiddleware.CSRF())
 	sales.POST("", dependencies.saleHandler.Create)
 	sales.GET("", dependencies.saleHandler.List)
 	sales.GET("/installments/alerts", dependencies.saleHandler.ListInstallmentAlerts)
@@ -35,4 +37,9 @@ func registerRoutes(router *gin.Engine, dependencies dependencies) {
 	analytics.GET("/payments", dependencies.analyticsHandler.PaymentMethods)
 	analytics.GET("/customers/top", dependencies.analyticsHandler.TopCustomers)
 	analytics.GET("/statuses", dependencies.analyticsHandler.Statuses)
+
+	privacy := router.Group("/privacy", dependencies.authMiddleware.Authenticate())
+	privacy.GET("/requests", dependencies.privacyHandler.ListRequests)
+	privacy.POST("/requests", dependencies.authMiddleware.CSRF(), dependencies.privacyHandler.CreateRequest)
+	privacy.GET("/export", dependencies.privacyHandler.Export)
 }

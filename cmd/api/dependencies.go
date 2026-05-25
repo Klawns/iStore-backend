@@ -10,6 +10,9 @@ import (
 	customerHandler "istore/internal/customer/handler"
 	customerRepositoryImplementation "istore/internal/customer/repository/implementation"
 	customerServiceImplementation "istore/internal/customer/service/implementation"
+	privacyHandler "istore/internal/privacy/handler"
+	privacyRepositoryImplementation "istore/internal/privacy/repository/implementation"
+	privacyServiceImplementation "istore/internal/privacy/service/implementation"
 	saleHandler "istore/internal/sale/handler"
 	saleRepositoryImplementation "istore/internal/sale/repository/implementation"
 	saleServiceContract "istore/internal/sale/service/contract"
@@ -26,14 +29,15 @@ type dependencies struct {
 	authHandler      *authHandler.AuthHandler
 	authMiddleware   *authMiddleware.AuthMiddleware
 	customerHandler  *customerHandler.CustomerHandler
+	privacyHandler   *privacyHandler.PrivacyHandler
 	saleHandler      *saleHandler.SaleHandler
 	saleService      saleServiceContract.SaleService
 	userHandler      *userHandler.UserHandler
 }
 
-func buildDependencies(db *gorm.DB) dependencies {
-	jwtProvider := authImplementation.NewJwtService(getEnv("JWT_SECRET", "dev-secret-change-me"))
-	cookieManager := authImplementation.NewCookieService()
+func buildDependencies(db *gorm.DB, jwtSecret string) dependencies {
+	jwtProvider := authImplementation.NewJwtService(jwtSecret)
+	cookieManager := authImplementation.NewCookieService(isProduction())
 
 	userRepository := userRepositoryImplementation.NewUserRepository(db)
 	userService := userServiceImplementation.NewUserService(userRepository)
@@ -41,6 +45,9 @@ func buildDependencies(db *gorm.DB) dependencies {
 
 	customerRepository := customerRepositoryImplementation.NewCustomerRepository(db)
 	customerService := customerServiceImplementation.NewCustomerService(customerRepository)
+
+	privacyRepository := privacyRepositoryImplementation.NewPrivacyRepository(db)
+	privacyService := privacyServiceImplementation.NewPrivacyService(privacyRepository)
 
 	saleRepository := saleRepositoryImplementation.NewSaleRepository(db)
 	saleService := saleServiceImplementation.NewSaleService(saleRepository)
@@ -53,8 +60,9 @@ func buildDependencies(db *gorm.DB) dependencies {
 		authHandler:      authHandler.NewAuthHandler(authService, cookieManager),
 		authMiddleware:   authMiddleware.NewAuthMiddleware(jwtProvider, cookieManager),
 		customerHandler:  customerHandler.NewCustomerHandler(customerService),
+		privacyHandler:   privacyHandler.NewPrivacyHandler(privacyService),
 		saleHandler:      saleHandler.NewSaleHandler(saleService),
 		saleService:      saleService,
-		userHandler:      userHandler.NewUserHandler(userService),
+		userHandler:      userHandler.NewUserHandler(userService, cookieManager),
 	}
 }

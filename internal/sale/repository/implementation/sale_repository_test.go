@@ -16,15 +16,17 @@ func TestCreatePersistsSaleInstallments(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&entity.SaleEntity{}, &entity.SaleItemEntity{}, &entity.SaleInstallmentEntity{}); err != nil {
+	if err := db.AutoMigrate(&customerEntity.CustomerEntity{}, &entity.SaleEntity{}, &entity.SaleItemEntity{}, &entity.SaleInstallmentEntity{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
+	customerID := seedCustomer(t, db, "Ana Silva")
 
 	repository := NewSaleRepository(db)
 	installments := 2
 	billingDay := 25
 	sale := &domain.Sale{
-		CustomerID:    1,
+		UserID:        1,
+		CustomerID:    customerID,
 		TotalValue:    101,
 		PaymentStatus: domain.PaymentPending,
 		PaymentType:   domain.CreditCard,
@@ -73,6 +75,7 @@ func TestListFiltersSalesAndSummarizesAllFilteredRows(t *testing.T) {
 	status := domain.PaymentApproved
 	paymentType := domain.Pix
 	result, err := repository.List(domain.SaleListFilter{
+		UserID:        1,
 		Page:          1,
 		Limit:         10,
 		Start:         &start,
@@ -104,7 +107,7 @@ func TestListSearchesCustomerProductAndSpecs(t *testing.T) {
 		{ProductName: "Apple Watch", Specs: "GPS", Quantity: 1, CostPrice: 100000, SalePrice: 160000},
 	})
 
-	customerResult, err := repository.List(domain.SaleListFilter{Page: 1, Limit: 10, Search: "carla"})
+	customerResult, err := repository.List(domain.SaleListFilter{UserID: 1, Page: 1, Limit: 10, Search: "carla"})
 	if err != nil {
 		t.Fatalf("search customer: %v", err)
 	}
@@ -112,7 +115,7 @@ func TestListSearchesCustomerProductAndSpecs(t *testing.T) {
 		t.Fatalf("expected customer search to match one sale, got %d", customerResult.TotalItems)
 	}
 
-	productResult, err := repository.List(domain.SaleListFilter{Page: 1, Limit: 10, Search: "watch"})
+	productResult, err := repository.List(domain.SaleListFilter{UserID: 1, Page: 1, Limit: 10, Search: "watch"})
 	if err != nil {
 		t.Fatalf("search product: %v", err)
 	}
@@ -120,7 +123,7 @@ func TestListSearchesCustomerProductAndSpecs(t *testing.T) {
 		t.Fatalf("expected product search to match one sale, got %d", productResult.TotalItems)
 	}
 
-	specsResult, err := repository.List(domain.SaleListFilter{Page: 1, Limit: 10, Search: "gps"})
+	specsResult, err := repository.List(domain.SaleListFilter{UserID: 1, Page: 1, Limit: 10, Search: "gps"})
 	if err != nil {
 		t.Fatalf("search specs: %v", err)
 	}
@@ -144,7 +147,7 @@ func TestListPaginatesAndOrdersSales(t *testing.T) {
 		}
 	}
 
-	firstPage, err := repository.List(domain.SaleListFilter{Page: 1, Limit: 10})
+	firstPage, err := repository.List(domain.SaleListFilter{UserID: 1, Page: 1, Limit: 10})
 	if err != nil {
 		t.Fatalf("list first page: %v", err)
 	}
@@ -155,7 +158,7 @@ func TestListPaginatesAndOrdersSales(t *testing.T) {
 		t.Fatalf("expected newest sale first, got id %d want %d", firstPage.Items[0].ID, newestID)
 	}
 
-	secondPage, err := repository.List(domain.SaleListFilter{Page: 2, Limit: 10})
+	secondPage, err := repository.List(domain.SaleListFilter{UserID: 1, Page: 2, Limit: 10})
 	if err != nil {
 		t.Fatalf("list second page: %v", err)
 	}
@@ -181,7 +184,7 @@ func newSaleListTestDB(t *testing.T) *gorm.DB {
 func seedCustomer(t *testing.T, db *gorm.DB, name string) int {
 	t.Helper()
 
-	customer := customerEntity.CustomerEntity{Name: name}
+	customer := customerEntity.CustomerEntity{UserID: 1, Name: name}
 	if err := db.Create(&customer).Error; err != nil {
 		t.Fatalf("seed customer: %v", err)
 	}
@@ -198,6 +201,7 @@ func seedSaleWithItems(t *testing.T, db *gorm.DB, customerID int, status domain.
 	}
 
 	sale := entity.SaleEntity{
+		UserID:        1,
 		CustomerID:    customerID,
 		TotalValue:    total,
 		PaymentStatus: status,
@@ -229,6 +233,7 @@ func TestUpdateInstallmentStatusApprovesSaleWhenAllPaid(t *testing.T) {
 
 	repository := NewSaleRepository(db)
 	sale := entity.SaleEntity{
+		UserID:        1,
 		CustomerID:    1,
 		TotalValue:    100,
 		PaymentStatus: domain.PaymentPending,
@@ -261,7 +266,7 @@ func TestUpdateInstallmentStatusApprovesSaleWhenAllPaid(t *testing.T) {
 		t.Fatalf("seed second installment: %v", err)
 	}
 
-	if _, err := repository.UpdateInstallmentStatus(second.ID, domain.InstallmentPaid, "", time.Now()); err != nil {
+	if _, err := repository.UpdateInstallmentStatus(1, second.ID, domain.InstallmentPaid, "", time.Now()); err != nil {
 		t.Fatalf("pay installment: %v", err)
 	}
 

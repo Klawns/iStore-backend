@@ -1,6 +1,7 @@
 package handler
 
 import (
+	authMiddleware "istore/internal/auth/middleware"
 	"istore/internal/sale/domain"
 	"istore/internal/sale/dto/request"
 	"istore/internal/sale/dto/response"
@@ -26,6 +27,12 @@ func NewSaleHandler(service contract.SaleService) *SaleHandler {
 }
 
 func (h *SaleHandler) Create(ctx *gin.Context) {
+	payload, restErr := authMiddleware.GetAuthPayload(ctx)
+	if restErr != nil {
+		ctx.JSON(restErr.Code, restErr)
+		return
+	}
+
 	var req request.SaleRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		restErr := validation.ValidateUserError(err)
@@ -35,6 +42,7 @@ func (h *SaleHandler) Create(ctx *gin.Context) {
 	}
 
 	sale, restErr := h.service.Create(&contract.CreateSaleInput{
+		UserID:          payload.UserID,
 		ClienteID:       req.ClienteID,
 		TipoPagamento:   req.TipoPagamento,
 		StatusPagamento: req.StatusPagamento,
@@ -53,6 +61,12 @@ func (h *SaleHandler) Create(ctx *gin.Context) {
 }
 
 func (h *SaleHandler) GetByID(ctx *gin.Context) {
+	payload, restErr := authMiddleware.GetAuthPayload(ctx)
+	if restErr != nil {
+		ctx.JSON(restErr.Code, restErr)
+		return
+	}
+
 	id, restErr := getIDParam(ctx)
 	if restErr != nil {
 		logSaleRestErr(ctx, "GetSaleByID", restErr, restErr)
@@ -60,7 +74,7 @@ func (h *SaleHandler) GetByID(ctx *gin.Context) {
 		return
 	}
 
-	sale, restErr := h.service.GetByID(id)
+	sale, restErr := h.service.GetByID(payload.UserID, id)
 	if restErr != nil {
 		logSaleRestErr(ctx, "GetSaleByID", restErr, restErr, zap.Int("sale_id", id))
 		ctx.JSON(restErr.Code, restErr)
@@ -71,6 +85,12 @@ func (h *SaleHandler) GetByID(ctx *gin.Context) {
 }
 
 func (h *SaleHandler) List(ctx *gin.Context) {
+	payload, restErr := authMiddleware.GetAuthPayload(ctx)
+	if restErr != nil {
+		ctx.JSON(restErr.Code, restErr)
+		return
+	}
+
 	input, restErr := parseListSalesQuery(ctx)
 	if restErr != nil {
 		logSaleRestErr(ctx, "ListSales", restErr, restErr)
@@ -78,6 +98,7 @@ func (h *SaleHandler) List(ctx *gin.Context) {
 		return
 	}
 
+	input.UserID = payload.UserID
 	result, restErr := h.service.List(input)
 	if restErr != nil {
 		logSaleRestErr(ctx, "ListSales", restErr, restErr)
@@ -89,6 +110,12 @@ func (h *SaleHandler) List(ctx *gin.Context) {
 }
 
 func (h *SaleHandler) ListByPeriod(ctx *gin.Context) {
+	payload, restErr := authMiddleware.GetAuthPayload(ctx)
+	if restErr != nil {
+		ctx.JSON(restErr.Code, restErr)
+		return
+	}
+
 	start, restErr := parseTimeQuery(ctx.Query("start"))
 	if restErr != nil {
 		logSaleRestErr(ctx, "ListSalesByPeriod", restErr, restErr, zap.String("start", ctx.Query("start")), zap.String("end", ctx.Query("end")))
@@ -103,7 +130,7 @@ func (h *SaleHandler) ListByPeriod(ctx *gin.Context) {
 		return
 	}
 
-	sales, restErr := h.service.ListByPeriod(start, end)
+	sales, restErr := h.service.ListByPeriod(payload.UserID, start, end)
 	if restErr != nil {
 		logSaleRestErr(ctx, "ListSalesByPeriod", restErr, restErr, zap.Time("start", start), zap.Time("end", end))
 		ctx.JSON(restErr.Code, restErr)
@@ -119,7 +146,13 @@ func (h *SaleHandler) ListByPeriod(ctx *gin.Context) {
 }
 
 func (h *SaleHandler) ListInstallmentAlerts(ctx *gin.Context) {
-	installments, restErr := h.service.ListInstallmentAlerts(time.Now(), 7)
+	payload, restErr := authMiddleware.GetAuthPayload(ctx)
+	if restErr != nil {
+		ctx.JSON(restErr.Code, restErr)
+		return
+	}
+
+	installments, restErr := h.service.ListInstallmentAlerts(payload.UserID, time.Now(), 7)
 	if restErr != nil {
 		logSaleRestErr(ctx, "ListInstallmentAlerts", restErr, restErr)
 		ctx.JSON(restErr.Code, restErr)
@@ -135,6 +168,12 @@ func (h *SaleHandler) ListInstallmentAlerts(ctx *gin.Context) {
 }
 
 func (h *SaleHandler) ListInstallmentsBySaleID(ctx *gin.Context) {
+	payload, restErr := authMiddleware.GetAuthPayload(ctx)
+	if restErr != nil {
+		ctx.JSON(restErr.Code, restErr)
+		return
+	}
+
 	id, restErr := getIDParam(ctx)
 	if restErr != nil {
 		logSaleRestErr(ctx, "ListInstallmentsBySaleID", restErr, restErr)
@@ -142,7 +181,7 @@ func (h *SaleHandler) ListInstallmentsBySaleID(ctx *gin.Context) {
 		return
 	}
 
-	installments, restErr := h.service.ListInstallmentsBySaleID(id)
+	installments, restErr := h.service.ListInstallmentsBySaleID(payload.UserID, id)
 	if restErr != nil {
 		logSaleRestErr(ctx, "ListInstallmentsBySaleID", restErr, restErr, zap.Int("sale_id", id))
 		ctx.JSON(restErr.Code, restErr)
@@ -158,6 +197,12 @@ func (h *SaleHandler) ListInstallmentsBySaleID(ctx *gin.Context) {
 }
 
 func (h *SaleHandler) UpdateInstallmentStatus(ctx *gin.Context) {
+	payload, restErr := authMiddleware.GetAuthPayload(ctx)
+	if restErr != nil {
+		ctx.JSON(restErr.Code, restErr)
+		return
+	}
+
 	id, restErr := getIDParam(ctx)
 	if restErr != nil {
 		logSaleRestErr(ctx, "UpdateInstallmentStatus", restErr, restErr)
@@ -173,7 +218,7 @@ func (h *SaleHandler) UpdateInstallmentStatus(ctx *gin.Context) {
 		return
 	}
 
-	installment, restErr := h.service.UpdateInstallmentStatus(id, contract.UpdateInstallmentStatusInput{
+	installment, restErr := h.service.UpdateInstallmentStatus(payload.UserID, id, contract.UpdateInstallmentStatusInput{
 		Status: req.Status,
 		Notes:  req.Notes,
 	})
@@ -187,6 +232,12 @@ func (h *SaleHandler) UpdateInstallmentStatus(ctx *gin.Context) {
 }
 
 func (h *SaleHandler) UpdateStatus(ctx *gin.Context) {
+	payload, restErr := authMiddleware.GetAuthPayload(ctx)
+	if restErr != nil {
+		ctx.JSON(restErr.Code, restErr)
+		return
+	}
+
 	id, restErr := getIDParam(ctx)
 	if restErr != nil {
 		logSaleRestErr(ctx, "UpdateSaleStatus", restErr, restErr)
@@ -202,7 +253,7 @@ func (h *SaleHandler) UpdateStatus(ctx *gin.Context) {
 		return
 	}
 
-	restErr = h.service.UpdateStatus(id, req.Status)
+	restErr = h.service.UpdateStatus(payload.UserID, id, req.Status)
 	if restErr != nil {
 		logSaleRestErr(ctx, "UpdateSaleStatus", restErr, restErr, zap.Int("sale_id", id), zap.String("payment_status", string(req.Status)))
 		ctx.JSON(restErr.Code, restErr)
@@ -213,6 +264,12 @@ func (h *SaleHandler) UpdateStatus(ctx *gin.Context) {
 }
 
 func (h *SaleHandler) Delete(ctx *gin.Context) {
+	payload, restErr := authMiddleware.GetAuthPayload(ctx)
+	if restErr != nil {
+		ctx.JSON(restErr.Code, restErr)
+		return
+	}
+
 	id, restErr := getIDParam(ctx)
 	if restErr != nil {
 		logSaleRestErr(ctx, "DeleteSale", restErr, restErr)
@@ -220,7 +277,7 @@ func (h *SaleHandler) Delete(ctx *gin.Context) {
 		return
 	}
 
-	restErr = h.service.Delete(id)
+	restErr = h.service.Delete(payload.UserID, id)
 	if restErr != nil {
 		logSaleRestErr(ctx, "DeleteSale", restErr, restErr, zap.Int("sale_id", id))
 		ctx.JSON(restErr.Code, restErr)

@@ -23,12 +23,11 @@ func NewJwtService(secret string) contracts.JwtProvider {
 	}
 }
 
-func (j *jwtService) Generate(userID uint, email string) (string, *rest_err.RestErr) {
-	logger.Info("generating JWT for user", zap.Uint("user_id", userID), zap.String("email", email), zap.String("journey", "GenerateToken"))
+func (j *jwtService) Generate(userID uint) (string, *rest_err.RestErr) {
+	logger.Info("generating JWT for user", zap.Uint("user_id", userID), zap.String("journey", "GenerateToken"))
 
 	claims := jwt.MapClaims{
 		"user_id": userID,
-		"email":   email,
 		"exp":     time.Now().Add(24 * time.Hour).Unix(),
 	}
 
@@ -75,11 +74,6 @@ func (j *jwtService) Validate(tokenString string) (*domain.TokenPayload, *rest_e
 		return nil, rest_err.NewUnauthorizedRequestError("invalid token")
 	}
 
-	email, ok := claims["email"].(string)
-	if !ok || email == "" {
-		return nil, rest_err.NewUnauthorizedRequestError("invalid token")
-	}
-
 	exp, ok := readInt64Claim(claims["exp"])
 	if !ok {
 		return nil, rest_err.NewUnauthorizedRequestError("invalid token")
@@ -87,7 +81,6 @@ func (j *jwtService) Validate(tokenString string) (*domain.TokenPayload, *rest_e
 
 	payload := &domain.TokenPayload{
 		UserID: userID,
-		Email:  email,
 		Exp:    exp,
 	}
 

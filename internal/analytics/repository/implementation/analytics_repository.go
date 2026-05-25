@@ -166,6 +166,7 @@ func (r *analyticsRepository) countSalesByStatus(filter domain.AnalyticsFilter, 
 }
 
 func applyPeriodFilters(query *gorm.DB, filter domain.AnalyticsFilter) *gorm.DB {
+	query = query.Where("sales.user_id = ?", filter.UserID)
 	if !filter.StartDate.IsZero() {
 		query = query.Where("sales.sale_date >= ?", filter.StartDate)
 	}

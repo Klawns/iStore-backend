@@ -6,6 +6,6 @@ import (
 )
 
 type JwtProvider interface {
-	Generate(userID uint, email string) (string, *rest_err.RestErr)
+	Generate(userID uint) (string, *rest_err.RestErr)
 	Validate(token string) (*domain.TokenPayload, *rest_err.RestErr)
 }

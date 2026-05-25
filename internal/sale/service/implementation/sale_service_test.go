@@ -18,23 +18,27 @@ func (f *fakeSaleRepository) Create(sale *domain.Sale) error {
 	return nil
 }
 
-func (f *fakeSaleRepository) FindByID(id int) (*domain.Sale, error) { return nil, nil }
-func (f *fakeSaleRepository) FindAll() ([]domain.Sale, error)       { return nil, nil }
+func (f *fakeSaleRepository) FindByID(userID uint, id int) (*domain.Sale, error) {
+	return nil, nil
+}
+func (f *fakeSaleRepository) FindAll() ([]domain.Sale, error) { return nil, nil }
 func (f *fakeSaleRepository) List(filter domain.SaleListFilter) (*domain.SaleListResult, error) {
 	return &domain.SaleListResult{Page: filter.Page, Limit: filter.Limit}, nil
 }
-func (f *fakeSaleRepository) ListByPeriod(start time.Time, end time.Time) ([]domain.Sale, error) {
+func (f *fakeSaleRepository) ListByPeriod(userID uint, start time.Time, end time.Time) ([]domain.Sale, error) {
 	return nil, nil
 }
-func (f *fakeSaleRepository) UpdateStatus(id int, status domain.PaymentStatus) error { return nil }
-func (f *fakeSaleRepository) Delete(id int) error                                    { return nil }
-func (f *fakeSaleRepository) ListInstallmentAlerts(now time.Time, windowDays int) ([]domain.SaleInstallment, error) {
+func (f *fakeSaleRepository) UpdateStatus(userID uint, id int, status domain.PaymentStatus) error {
+	return nil
+}
+func (f *fakeSaleRepository) Delete(userID uint, id int) error { return nil }
+func (f *fakeSaleRepository) ListInstallmentAlerts(userID uint, now time.Time, windowDays int) ([]domain.SaleInstallment, error) {
 	return f.installments, nil
 }
-func (f *fakeSaleRepository) ListInstallmentsBySaleID(saleID int) ([]domain.SaleInstallment, error) {
+func (f *fakeSaleRepository) ListInstallmentsBySaleID(userID uint, saleID int) ([]domain.SaleInstallment, error) {
 	return f.installments, nil
 }
-func (f *fakeSaleRepository) UpdateInstallmentStatus(id int, status domain.SaleInstallmentStatus, notes string, validatedAt time.Time) (*domain.SaleInstallment, error) {
+func (f *fakeSaleRepository) UpdateInstallmentStatus(userID uint, id int, status domain.SaleInstallmentStatus, notes string, validatedAt time.Time) (*domain.SaleInstallment, error) {
 	return &domain.SaleInstallment{ID: id, Status: status, Notes: notes, ValidatedAt: &validatedAt}, nil
 }
 
@@ -112,12 +116,12 @@ func TestListRejectsInvalidPaginationAndFilters(t *testing.T) {
 		name  string
 		input contract.ListSalesInput
 	}{
-		{name: "page", input: contract.ListSalesInput{Page: 0, Limit: 10}},
-		{name: "limit", input: contract.ListSalesInput{Page: 1, Limit: 101}},
-		{name: "date range", input: contract.ListSalesInput{Page: 1, Limit: 10, Start: &start, End: &end}},
-		{name: "status", input: contract.ListSalesInput{Page: 1, Limit: 10, Status: &status}},
-		{name: "payment type", input: contract.ListSalesInput{Page: 1, Limit: 10, PaymentType: &paymentType}},
-		{name: "customer", input: contract.ListSalesInput{Page: 1, Limit: 10, CustomerID: &customerID}},
+		{name: "page", input: contract.ListSalesInput{UserID: 1, Page: 0, Limit: 10}},
+		{name: "limit", input: contract.ListSalesInput{UserID: 1, Page: 1, Limit: 101}},
+		{name: "date range", input: contract.ListSalesInput{UserID: 1, Page: 1, Limit: 10, Start: &start, End: &end}},
+		{name: "status", input: contract.ListSalesInput{UserID: 1, Page: 1, Limit: 10, Status: &status}},
+		{name: "payment type", input: contract.ListSalesInput{UserID: 1, Page: 1, Limit: 10, PaymentType: &paymentType}},
+		{name: "customer", input: contract.ListSalesInput{UserID: 1, Page: 1, Limit: 10, CustomerID: &customerID}},
 	}
 
 	for _, tt := range tests {
@@ -179,6 +183,7 @@ func TestBuildSaleInstallmentsSplitsAmountsAndDueDates(t *testing.T) {
 
 func validCreateInput() *contract.CreateSaleInput {
 	return &contract.CreateSaleInput{
+		UserID:          1,
 		ClienteID:       1,
 		TipoPagamento:   domain.Pix,
 		StatusPagamento: domain.PaymentPending,

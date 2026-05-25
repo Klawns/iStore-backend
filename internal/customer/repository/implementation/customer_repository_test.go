@@ -20,7 +20,7 @@ func TestListPaginatesOrdersAndKeepsCustomersWithoutSales(t *testing.T) {
 	seedCustomer(t, db, "Ana Silva", "21999990000")
 	seedCustomer(t, db, "Carla Mendes", "31999990000")
 
-	result, err := repository.List(domain.CustomerListFilter{Page: 1, Limit: 2})
+	result, err := repository.List(domain.CustomerListFilter{UserID: 1, Page: 1, Limit: 2})
 	if err != nil {
 		t.Fatalf("list customers: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestListSearchesByNameAndPhone(t *testing.T) {
 	seedCustomer(t, db, "Ana Silva", "11912345678")
 	seedCustomer(t, db, "Bruno Costa", "21987654321")
 
-	nameResult, err := repository.List(domain.CustomerListFilter{Page: 1, Limit: 10, Search: "ana"})
+	nameResult, err := repository.List(domain.CustomerListFilter{UserID: 1, Page: 1, Limit: 10, Search: "ana"})
 	if err != nil {
 		t.Fatalf("search by name: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestListSearchesByNameAndPhone(t *testing.T) {
 		t.Fatalf("expected Ana by name search, got %#v", nameResult.Items)
 	}
 
-	phoneResult, err := repository.List(domain.CustomerListFilter{Page: 1, Limit: 10, Search: "9876"})
+	phoneResult, err := repository.List(domain.CustomerListFilter{UserID: 1, Page: 1, Limit: 10, Search: "9876"})
 	if err != nil {
 		t.Fatalf("search by phone: %v", err)
 	}
@@ -89,6 +89,7 @@ func TestListFiltersSalesAndSummarizesAllFilteredCustomers(t *testing.T) {
 	paymentType := saleDomain.Pix
 
 	result, err := repository.List(domain.CustomerListFilter{
+		UserID:        1,
 		Page:          1,
 		Limit:         1,
 		Start:         &start,
@@ -114,6 +115,82 @@ func TestListFiltersSalesAndSummarizesAllFilteredCustomers(t *testing.T) {
 	}
 }
 
+func TestListScopesCustomersByUser(t *testing.T) {
+	db := newCustomerListTestDB(t)
+	repository := NewCustomerRepository(db)
+
+	seedCustomer(t, db, "Ana Silva", "11999990000")
+	other := customerEntity.CustomerEntity{UserID: 2, Name: "Outro Usuario", Phone: "21999990000"}
+	if err := db.Create(&other).Error; err != nil {
+		t.Fatalf("seed other customer: %v", err)
+	}
+
+	result, err := repository.List(domain.CustomerListFilter{UserID: 1, Page: 1, Limit: 10})
+	if err != nil {
+		t.Fatalf("list customers: %v", err)
+	}
+
+	if result.TotalItems != 1 || result.Items[0].Name != "Ana Silva" {
+		t.Fatalf("expected only user customers, got %#v", result.Items)
+	}
+}
+
+func TestDeleteManyDeletesOnlySelectedCustomersFromUser(t *testing.T) {
+	db := newCustomerListTestDB(t)
+	repository := NewCustomerRepository(db)
+
+	firstID := seedCustomer(t, db, "Ana Silva", "11999990000")
+	secondID := seedCustomer(t, db, "Bruno Costa", "21999990000")
+	thirdID := seedCustomer(t, db, "Carla Mendes", "31999990000")
+	other := customerEntity.CustomerEntity{UserID: 2, Name: "Outro Usuario", Phone: "21999990000"}
+	if err := db.Create(&other).Error; err != nil {
+		t.Fatalf("seed other customer: %v", err)
+	}
+
+	if err := repository.DeleteMany(1, []int{firstID, thirdID, other.ID}); err != nil {
+		t.Fatalf("delete many customers: %v", err)
+	}
+
+	var remaining []customerEntity.CustomerEntity
+	if err := db.Order("id ASC").Find(&remaining).Error; err != nil {
+		t.Fatalf("list remaining customers: %v", err)
+	}
+	if len(remaining) != 2 || remaining[0].ID != secondID || remaining[1].ID != other.ID {
+		t.Fatalf("unexpected remaining customers: %#v", remaining)
+	}
+}
+
+func TestCountSalesByCustomerIDsScopesByUser(t *testing.T) {
+	db := newCustomerListTestDB(t)
+	repository := NewCustomerRepository(db)
+
+	customerID := seedCustomer(t, db, "Ana Silva", "11999990000")
+	otherCustomer := customerEntity.CustomerEntity{UserID: 2, Name: "Outro Usuario", Phone: "21999990000"}
+	if err := db.Create(&otherCustomer).Error; err != nil {
+		t.Fatalf("seed other customer: %v", err)
+	}
+	seedSaleWithItems(t, db, customerID, saleDomain.PaymentApproved, saleDomain.Pix, time.Now(), nil)
+	otherSale := saleEntity.SaleEntity{
+		UserID:        2,
+		CustomerID:    otherCustomer.ID,
+		TotalValue:    100,
+		PaymentStatus: saleDomain.PaymentApproved,
+		PaymentType:   saleDomain.Pix,
+		SaleDate:      time.Now(),
+	}
+	if err := db.Create(&otherSale).Error; err != nil {
+		t.Fatalf("seed other sale: %v", err)
+	}
+
+	count, err := repository.CountSalesByCustomerIDs(1, []int{customerID, otherCustomer.ID})
+	if err != nil {
+		t.Fatalf("count sales: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected one scoped sale, got %d", count)
+	}
+}
+
 func newCustomerListTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
@@ -132,7 +209,7 @@ func newCustomerListTestDB(t *testing.T) *gorm.DB {
 func seedCustomer(t *testing.T, db *gorm.DB, name string, phone string) int {
 	t.Helper()
 
-	customer := customerEntity.CustomerEntity{Name: name, Phone: phone}
+	customer := customerEntity.CustomerEntity{UserID: 1, Name: name, Phone: phone}
 	if err := db.Create(&customer).Error; err != nil {
 		t.Fatalf("seed customer: %v", err)
 	}
@@ -149,6 +226,7 @@ func seedSaleWithItems(t *testing.T, db *gorm.DB, customerID int, status saleDom
 	}
 
 	sale := saleEntity.SaleEntity{
+		UserID:        1,
 		CustomerID:    customerID,
 		TotalValue:    total,
 		PaymentStatus: status,

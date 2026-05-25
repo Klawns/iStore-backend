@@ -4,6 +4,7 @@ import (
 	"istore/internal/analytics/domain"
 	"istore/internal/analytics/dto/response"
 	serviceContracts "istore/internal/analytics/service/contracts"
+	authMiddleware "istore/internal/auth/middleware"
 	saleDomain "istore/internal/sale/domain"
 	"istore/pkg/rest_err"
 	"net/http"
@@ -28,6 +29,10 @@ func (h *AnalyticsHandler) Dashboard(ctx *gin.Context) {
 		ctx.JSON(restErr.Code, restErr)
 		return
 	}
+	if restErr := addAuthenticatedUser(ctx, &filter); restErr != nil {
+		ctx.JSON(restErr.Code, restErr)
+		return
+	}
 
 	metrics, restErr := h.service.GetDashboard(filter)
 	if restErr != nil {
@@ -41,6 +46,10 @@ func (h *AnalyticsHandler) Dashboard(ctx *gin.Context) {
 func (h *AnalyticsHandler) Revenue(ctx *gin.Context) {
 	filter, restErr := filterFromQuery(ctx)
 	if restErr != nil {
+		ctx.JSON(restErr.Code, restErr)
+		return
+	}
+	if restErr := addAuthenticatedUser(ctx, &filter); restErr != nil {
 		ctx.JSON(restErr.Code, restErr)
 		return
 	}
@@ -60,6 +69,10 @@ func (h *AnalyticsHandler) Profit(ctx *gin.Context) {
 		ctx.JSON(restErr.Code, restErr)
 		return
 	}
+	if restErr := addAuthenticatedUser(ctx, &filter); restErr != nil {
+		ctx.JSON(restErr.Code, restErr)
+		return
+	}
 
 	metrics, restErr := h.service.GetProfit(filter)
 	if restErr != nil {
@@ -73,6 +86,10 @@ func (h *AnalyticsHandler) Profit(ctx *gin.Context) {
 func (h *AnalyticsHandler) TopProducts(ctx *gin.Context) {
 	filter, restErr := filterFromQuery(ctx)
 	if restErr != nil {
+		ctx.JSON(restErr.Code, restErr)
+		return
+	}
+	if restErr := addAuthenticatedUser(ctx, &filter); restErr != nil {
 		ctx.JSON(restErr.Code, restErr)
 		return
 	}
@@ -92,6 +109,10 @@ func (h *AnalyticsHandler) PaymentMethods(ctx *gin.Context) {
 		ctx.JSON(restErr.Code, restErr)
 		return
 	}
+	if restErr := addAuthenticatedUser(ctx, &filter); restErr != nil {
+		ctx.JSON(restErr.Code, restErr)
+		return
+	}
 
 	metrics, restErr := h.service.GetPaymentMethods(filter)
 	if restErr != nil {
@@ -105,6 +126,10 @@ func (h *AnalyticsHandler) PaymentMethods(ctx *gin.Context) {
 func (h *AnalyticsHandler) TopCustomers(ctx *gin.Context) {
 	filter, restErr := filterFromQuery(ctx)
 	if restErr != nil {
+		ctx.JSON(restErr.Code, restErr)
+		return
+	}
+	if restErr := addAuthenticatedUser(ctx, &filter); restErr != nil {
 		ctx.JSON(restErr.Code, restErr)
 		return
 	}
@@ -124,6 +149,10 @@ func (h *AnalyticsHandler) Statuses(ctx *gin.Context) {
 		ctx.JSON(restErr.Code, restErr)
 		return
 	}
+	if restErr := addAuthenticatedUser(ctx, &filter); restErr != nil {
+		ctx.JSON(restErr.Code, restErr)
+		return
+	}
 
 	metrics, restErr := h.service.GetStatuses(filter)
 	if restErr != nil {
@@ -132,6 +161,16 @@ func (h *AnalyticsHandler) Statuses(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, response.FromStatusDomainSlice(metrics))
+}
+
+func addAuthenticatedUser(ctx *gin.Context, filter *domain.AnalyticsFilter) *rest_err.RestErr {
+	payload, restErr := authMiddleware.GetAuthPayload(ctx)
+	if restErr != nil {
+		return restErr
+	}
+
+	filter.UserID = payload.UserID
+	return nil
 }
 
 func filterFromQuery(ctx *gin.Context) (domain.AnalyticsFilter, *rest_err.RestErr) {

@@ -86,3 +86,11 @@ func NewForbiddenError(message string) *RestErr {
 		Code:    http.StatusForbidden,
 	}
 }
+
+func NewConflictError(message string) *RestErr {
+	return &RestErr{
+		Message: message,
+		Err:     "conflict",
+		Code:    http.StatusConflict,
+	}
+}

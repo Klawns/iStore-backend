@@ -8,6 +8,7 @@ import (
 
 func TestNormalizeFilterRejectsInvalidPaymentType(t *testing.T) {
 	_, restErr := normalizeFilter(domain.AnalyticsFilter{
+		UserID:      1,
 		PaymentType: saleDomain.PaymentType("BOLETO"),
 	})
 
@@ -17,7 +18,7 @@ func TestNormalizeFilterRejectsInvalidPaymentType(t *testing.T) {
 }
 
 func TestNormalizeFilterKeepsApprovedAsDefaultStatus(t *testing.T) {
-	filter, restErr := normalizeFilter(domain.AnalyticsFilter{})
+	filter, restErr := normalizeFilter(domain.AnalyticsFilter{UserID: 1})
 	if restErr != nil {
 		t.Fatalf("normalize filter: %v", restErr)
 	}

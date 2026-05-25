@@ -22,14 +22,19 @@ func NewCustomerService(customerRepository repoContracts.CustomerRepository) *Cu
 }
 
 func (s *CustomerService) Create(input serviceContracts.CreateCustomerInput) (*domain.Customer, *rest_err.RestErr) {
+	if input.UserID == 0 {
+		return nil, rest_err.NewUnauthorizedRequestError("invalid auth payload")
+	}
+
 	customer := &domain.Customer{
-		Name:  input.Name,
-		Phone: input.Phone,
+		UserID: input.UserID,
+		Name:   input.Name,
+		Phone:  input.Phone,
 	}
 
 	err := s.CustomerRepository.Create(customer)
 	if err != nil {
-		logger.Error("Error trying to create an customer", err, zap.String("customer_name", input.Name), zap.String("journey", "CreateCustomer"))
+		logger.Error("Error trying to create an customer", err, zap.Uint("user_id", input.UserID), zap.String("journey", "CreateCustomer"))
 		return nil, rest_err.NewInternalServerError("Erro ao criar cliente")
 	}
 
@@ -37,7 +42,11 @@ func (s *CustomerService) Create(input serviceContracts.CreateCustomerInput) (*d
 }
 
 func (s *CustomerService) Update(id int, input serviceContracts.UpdateCustomerInput) (*domain.Customer, *rest_err.RestErr) {
-	customer, err := s.CustomerRepository.FindByID(id)
+	if input.UserID == 0 {
+		return nil, rest_err.NewUnauthorizedRequestError("invalid auth payload")
+	}
+
+	customer, err := s.CustomerRepository.FindByID(input.UserID, id)
 	if err != nil {
 		logger.Error("Error trying to find an customer", err, zap.Int("customer_id", id), zap.String("journey", "UpdateCustomer"))
 		return nil, rest_err.NewInternalServerError("Erro ao atualizar cliente")
@@ -62,8 +71,12 @@ func (s *CustomerService) Update(id int, input serviceContracts.UpdateCustomerIn
 	return customer, nil
 }
 
-func (s *CustomerService) Delete(id int) *rest_err.RestErr {
-	customer, err := s.CustomerRepository.FindByID(id)
+func (s *CustomerService) Delete(userID uint, id int) *rest_err.RestErr {
+	if userID == 0 {
+		return rest_err.NewUnauthorizedRequestError("invalid auth payload")
+	}
+
+	customer, err := s.CustomerRepository.FindByID(userID, id)
 	if err != nil {
 		logger.Error("Error trying to find an customer", err, zap.Int("customer_id", id), zap.String("journey", "DeleteCustomer"))
 		return rest_err.NewInternalServerError("Erro ao deletar cliente")
@@ -72,7 +85,16 @@ func (s *CustomerService) Delete(id int) *rest_err.RestErr {
 		return rest_err.NewNotFoundError("Cliente não encontrado")
 	}
 
-	err = s.CustomerRepository.Delete(id)
+	salesCount, err := s.CustomerRepository.CountSalesByCustomerIDs(userID, []int{id})
+	if err != nil {
+		logger.Error("Error trying to count customer sales", err, zap.Int("customer_id", id), zap.String("journey", "DeleteCustomer"))
+		return rest_err.NewInternalServerError("Erro ao deletar cliente")
+	}
+	if salesCount > 0 {
+		return rest_err.NewConflictError("Clientes com historico de vendas nao podem ser excluidos")
+	}
+
+	err = s.CustomerRepository.Delete(userID, id)
 	if err != nil {
 		logger.Error("Error trying to delete an customer", err, zap.Int("customer_id", id), zap.String("journey", "DeleteCustomer"))
 		return rest_err.NewInternalServerError("Erro ao deletar cliente")
@@ -81,8 +103,59 @@ func (s *CustomerService) Delete(id int) *rest_err.RestErr {
 	return nil
 }
 
-func (s *CustomerService) GetByID(id int) (*domain.Customer, *rest_err.RestErr) {
-	customer, err := s.CustomerRepository.FindByID(id)
+func (s *CustomerService) DeleteMany(userID uint, ids []int) (int, *rest_err.RestErr) {
+	if userID == 0 {
+		return 0, rest_err.NewUnauthorizedRequestError("invalid auth payload")
+	}
+
+	uniqueIDs := make([]int, 0, len(ids))
+	seen := make(map[int]struct{}, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			return 0, rest_err.NewBadRequestError("IDs invalidos")
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		uniqueIDs = append(uniqueIDs, id)
+	}
+	if len(uniqueIDs) == 0 {
+		return 0, rest_err.NewBadRequestError("Informe ao menos um cliente")
+	}
+
+	customers, err := s.CustomerRepository.FindByIDs(userID, uniqueIDs)
+	if err != nil {
+		logger.Error("Error trying to find customers", err, zap.Uint("user_id", userID), zap.String("journey", "DeleteManyCustomers"))
+		return 0, rest_err.NewInternalServerError("Erro ao deletar clientes")
+	}
+	if len(customers) != len(uniqueIDs) {
+		return 0, rest_err.NewNotFoundError("Cliente não encontrado")
+	}
+
+	salesCount, err := s.CustomerRepository.CountSalesByCustomerIDs(userID, uniqueIDs)
+	if err != nil {
+		logger.Error("Error trying to count customer sales", err, zap.Uint("user_id", userID), zap.String("journey", "DeleteManyCustomers"))
+		return 0, rest_err.NewInternalServerError("Erro ao deletar clientes")
+	}
+	if salesCount > 0 {
+		return 0, rest_err.NewConflictError("Clientes com historico de vendas nao podem ser excluidos")
+	}
+
+	if err := s.CustomerRepository.DeleteMany(userID, uniqueIDs); err != nil {
+		logger.Error("Error trying to delete customers", err, zap.Uint("user_id", userID), zap.String("journey", "DeleteManyCustomers"))
+		return 0, rest_err.NewInternalServerError("Erro ao deletar clientes")
+	}
+
+	return len(uniqueIDs), nil
+}
+
+func (s *CustomerService) GetByID(userID uint, id int) (*domain.Customer, *rest_err.RestErr) {
+	if userID == 0 {
+		return nil, rest_err.NewUnauthorizedRequestError("invalid auth payload")
+	}
+
+	customer, err := s.CustomerRepository.FindByID(userID, id)
 	if err != nil {
 		logger.Error("Error trying to find an customer", err, zap.Int("customer_id", id), zap.String("journey", "FindCustomerByID"))
 		return nil, rest_err.NewInternalServerError("Erro ao buscar cliente")
@@ -95,6 +168,10 @@ func (s *CustomerService) GetByID(id int) (*domain.Customer, *rest_err.RestErr) 
 }
 
 func (s *CustomerService) List(input serviceContracts.ListCustomersInput) (*domain.CustomerListResult, *rest_err.RestErr) {
+	if input.UserID == 0 {
+		return nil, rest_err.NewUnauthorizedRequestError("invalid auth payload")
+	}
+
 	if input.Page <= 0 {
 		return nil, rest_err.NewBadRequestError("Pagina invalida")
 	}
@@ -124,6 +201,7 @@ func (s *CustomerService) List(input serviceContracts.ListCustomersInput) (*doma
 	}
 
 	result, err := s.CustomerRepository.List(domain.CustomerListFilter{
+		UserID:        input.UserID,
 		Page:          input.Page,
 		Limit:         input.Limit,
 		Start:         input.Start,

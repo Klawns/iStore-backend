@@ -23,6 +23,16 @@ func (r *saleRepository) Create(sale *domain.Sale) error {
 	saleEntity := entity.FromSaleDomain(sale)
 
 	if err := r.db.Transaction(func(tx *gorm.DB) error {
+		var customerCount int64
+		if err := tx.Table("customers").
+			Where("user_id = ? AND id = ?", sale.UserID, sale.CustomerID).
+			Count(&customerCount).Error; err != nil {
+			return err
+		}
+		if customerCount == 0 {
+			return gorm.ErrRecordNotFound
+		}
+
 		if err := tx.Create(saleEntity).Error; err != nil {
 			return err
 		}
@@ -49,9 +59,11 @@ func (r *saleRepository) Create(sale *domain.Sale) error {
 	return nil
 }
 
-func (r *saleRepository) FindByID(id int) (*domain.Sale, error) {
+func (r *saleRepository) FindByID(userID uint, id int) (*domain.Sale, error) {
 	var saleEntity entity.SaleEntity
-	if err := r.db.Preload("Customer").Preload("Items").First(&saleEntity, id).Error; err != nil {
+	if err := r.db.Preload("Customer").Preload("Items").
+		Where("sales.user_id = ? AND sales.id = ?", userID, id).
+		First(&saleEntity).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
@@ -127,10 +139,10 @@ func (r *saleRepository) List(filter domain.SaleListFilter) (*domain.SaleListRes
 	}, nil
 }
 
-func (r *saleRepository) ListByPeriod(start time.Time, end time.Time) ([]domain.Sale, error) {
+func (r *saleRepository) ListByPeriod(userID uint, start time.Time, end time.Time) ([]domain.Sale, error) {
 	var saleEntities []entity.SaleEntity
 	if err := r.db.Preload("Customer").Preload("Items").
-		Where("sale_date BETWEEN ? AND ?", start, end).
+		Where("user_id = ? AND sale_date BETWEEN ? AND ?", userID, start, end).
 		Find(&saleEntities).Error; err != nil {
 		return nil, err
 	}
@@ -146,7 +158,8 @@ func (r *saleRepository) ListByPeriod(start time.Time, end time.Time) ([]domain.
 func (r *saleRepository) filteredSaleIDs(filter domain.SaleListFilter) *gorm.DB {
 	query := r.db.Model(&entity.SaleEntity{}).
 		Select("DISTINCT sales.id, sales.sale_date").
-		Joins("LEFT JOIN customers ON customers.id = sales.customer_id")
+		Joins("LEFT JOIN customers ON customers.id = sales.customer_id").
+		Where("sales.user_id = ?", filter.UserID)
 
 	if filter.Search != "" {
 		query = query.Joins("LEFT JOIN sale_items ON sale_items.sale_id = sales.id")
@@ -214,29 +227,31 @@ func (r *saleRepository) saleListSummary(filteredIDs *gorm.DB, totalItems int64)
 	}, nil
 }
 
-func (r *saleRepository) UpdateStatus(id int, status domain.PaymentStatus) error {
+func (r *saleRepository) UpdateStatus(userID uint, id int, status domain.PaymentStatus) error {
 	return r.db.Model(&entity.SaleEntity{}).
-		Where("id = ?", id).
+		Where("user_id = ? AND id = ?", userID, id).
 		Update("payment_status", status).Error
 }
 
-func (r *saleRepository) Delete(id int) error {
-	return r.db.Delete(&entity.SaleEntity{}, id).Error
+func (r *saleRepository) Delete(userID uint, id int) error {
+	return r.db.Where("user_id = ? AND id = ?", userID, id).Delete(&entity.SaleEntity{}).Error
 }
 
-func (r *saleRepository) ListInstallmentAlerts(now time.Time, windowDays int) ([]domain.SaleInstallment, error) {
+func (r *saleRepository) ListInstallmentAlerts(userID uint, now time.Time, windowDays int) ([]domain.SaleInstallment, error) {
 	start := dateOnly(now)
 	end := start.AddDate(0, 0, windowDays)
 
 	var installmentEntities []entity.SaleInstallmentEntity
 	if err := r.db.Preload("Sale.Customer").
+		Joins("JOIN sales ON sales.id = sale_installments.sale_id").
 		Where(
-			"(status = ? AND due_date <= ?) OR status = ?",
+			"sales.user_id = ? AND ((sale_installments.status = ? AND sale_installments.due_date <= ?) OR sale_installments.status = ?)",
+			userID,
 			domain.InstallmentPending,
 			end,
 			domain.InstallmentUnpaid,
 		).
-		Order("due_date ASC, id ASC").
+		Order("sale_installments.due_date ASC, sale_installments.id ASC").
 		Find(&installmentEntities).Error; err != nil {
 		return nil, err
 	}
@@ -253,11 +268,12 @@ func (r *saleRepository) ListInstallmentAlerts(now time.Time, windowDays int) ([
 	return installments, nil
 }
 
-func (r *saleRepository) ListInstallmentsBySaleID(saleID int) ([]domain.SaleInstallment, error) {
+func (r *saleRepository) ListInstallmentsBySaleID(userID uint, saleID int) ([]domain.SaleInstallment, error) {
 	var installmentEntities []entity.SaleInstallmentEntity
 	if err := r.db.Preload("Sale.Customer").
-		Where("sale_id = ?", saleID).
-		Order("installment_number ASC").
+		Joins("JOIN sales ON sales.id = sale_installments.sale_id").
+		Where("sales.user_id = ? AND sale_installments.sale_id = ?", userID, saleID).
+		Order("sale_installments.installment_number ASC").
 		Find(&installmentEntities).Error; err != nil {
 		return nil, err
 	}
@@ -271,11 +287,13 @@ func (r *saleRepository) ListInstallmentsBySaleID(saleID int) ([]domain.SaleInst
 	return installments, nil
 }
 
-func (r *saleRepository) UpdateInstallmentStatus(id int, status domain.SaleInstallmentStatus, notes string, validatedAt time.Time) (*domain.SaleInstallment, error) {
+func (r *saleRepository) UpdateInstallmentStatus(userID uint, id int, status domain.SaleInstallmentStatus, notes string, validatedAt time.Time) (*domain.SaleInstallment, error) {
 	var installmentEntity entity.SaleInstallmentEntity
 
 	err := r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.First(&installmentEntity, id).Error; err != nil {
+		if err := tx.Joins("JOIN sales ON sales.id = sale_installments.sale_id").
+			Where("sales.user_id = ? AND sale_installments.id = ?", userID, id).
+			First(&installmentEntity).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return err
 			}
@@ -293,7 +311,7 @@ func (r *saleRepository) UpdateInstallmentStatus(id int, status domain.SaleInsta
 		}
 
 		if err := tx.Model(&entity.SaleInstallmentEntity{}).
-			Where("id = ?", id).
+			Where("id = ? AND sale_id IN (?)", id, tx.Model(&entity.SaleEntity{}).Select("id").Where("user_id = ?", userID)).
 			Updates(updates).Error; err != nil {
 			return err
 		}
@@ -307,7 +325,7 @@ func (r *saleRepository) UpdateInstallmentStatus(id int, status domain.SaleInsta
 
 		if pendingCount == 0 {
 			if err := tx.Model(&entity.SaleEntity{}).
-				Where("id = ?", installmentEntity.SaleID).
+				Where("user_id = ? AND id = ?", userID, installmentEntity.SaleID).
 				Update("payment_status", domain.PaymentApproved).Error; err != nil {
 				return err
 			}

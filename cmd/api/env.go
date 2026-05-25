@@ -14,6 +14,22 @@ func getEnv(key string, fallback string) string {
 	return value
 }
 
+func isProduction() bool {
+	return os.Getenv("APP_ENV") == "production" || os.Getenv("GIN_MODE") == "release"
+}
+
+func getJWTSecret() (string, error) {
+	value := os.Getenv("JWT_SECRET")
+	if value == "" && isProduction() {
+		return "", fmt.Errorf("JWT_SECRET is required in production")
+	}
+	if value == "" {
+		return "dev-secret-change-me", nil
+	}
+
+	return value, nil
+}
+
 func getDatabaseDSN() string {
 	if value := os.Getenv("DATABASE_URL"); value != "" {
 		return value

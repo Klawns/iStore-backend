@@ -11,6 +11,7 @@ const (
 )
 
 type AnalyticsFilter struct {
+	UserID      uint
 	StartDate   time.Time
 	EndDate     time.Time
 	Limit       int

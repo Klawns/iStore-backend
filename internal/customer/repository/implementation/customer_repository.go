@@ -43,15 +43,21 @@ func (r *customerRepository) Update(customer *domain.Customer) error {
 	return r.db.Save(customerEntity).Error
 }
 
-func (r *customerRepository) Delete(id int) error {
+func (r *customerRepository) Delete(userID uint, id int) error {
 	// Deletamos pelo ID e retornamos apenas o erro do GORM.
-	return r.db.Delete(&entity.CustomerEntity{}, id).Error
+	return r.db.Where("user_id = ? AND id = ?", userID, id).Delete(&entity.CustomerEntity{}).Error
 }
 
-func (r *customerRepository) FindByID(id int) (*domain.Customer, error) {
+func (r *customerRepository) DeleteMany(userID uint, ids []int) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		return tx.Where("user_id = ? AND id IN ?", userID, ids).Delete(&entity.CustomerEntity{}).Error
+	})
+}
+
+func (r *customerRepository) FindByID(userID uint, id int) (*domain.Customer, error) {
 	// Primeiro, buscamos o cliente no banco usando o ID recebido.
 	var customerEntity entity.CustomerEntity
-	if err := r.db.First(&customerEntity, id).Error; err != nil {
+	if err := r.db.Where("user_id = ? AND id = ?", userID, id).First(&customerEntity).Error; err != nil {
 		// Quando não encontrar registro, retornamos nil sem erro para o service decidir o 404.
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -62,6 +68,20 @@ func (r *customerRepository) FindByID(id int) (*domain.Customer, error) {
 
 	// Segundo, convertemos a entidade encontrada para domínio.
 	return customerEntity.ToDomain(), nil
+}
+
+func (r *customerRepository) FindByIDs(userID uint, ids []int) ([]domain.Customer, error) {
+	var customerEntities []entity.CustomerEntity
+	if err := r.db.Where("user_id = ? AND id IN ?", userID, ids).Find(&customerEntities).Error; err != nil {
+		return nil, err
+	}
+
+	customers := make([]domain.Customer, len(customerEntities))
+	for i, customerEntity := range customerEntities {
+		customers[i] = *customerEntity.ToDomain()
+	}
+
+	return customers, nil
 }
 
 func (r *customerRepository) FindAll() ([]domain.Customer, error) {
@@ -134,6 +154,17 @@ func (r *customerRepository) List(filter domain.CustomerListFilter) (*domain.Cus
 	}, nil
 }
 
+func (r *customerRepository) CountSalesByCustomerIDs(userID uint, ids []int) (int64, error) {
+	var count int64
+	if err := r.db.Table("sales").
+		Where("user_id = ? AND customer_id IN ?", userID, ids).
+		Count(&count).Error; err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
 func (r *customerRepository) filteredCustomersQuery(filter domain.CustomerListFilter, metrics *gorm.DB) *gorm.DB {
 	joinType := "LEFT JOIN"
 	if hasSaleFilters(filter) {
@@ -148,7 +179,8 @@ func (r *customerRepository) filteredCustomersQuery(filter domain.CustomerListFi
 			COALESCE(customer_metrics.sales_count, 0) AS sales_count,
 			COALESCE(customer_metrics.revenue, 0) AS revenue,
 			COALESCE(customer_metrics.profit, 0) AS profit`).
-		Joins(joinType+" (?) AS customer_metrics ON customer_metrics.customer_id = customers.id", metrics)
+		Joins(joinType+" (?) AS customer_metrics ON customer_metrics.customer_id = customers.id", metrics).
+		Where("customers.user_id = ?", filter.UserID)
 
 	if filter.Search != "" {
 		term := "%" + strings.ToLower(filter.Search) + "%"
@@ -170,6 +202,7 @@ func (r *customerRepository) customerMetricsQuery(filter domain.CustomerListFilt
 			COALESCE(SUM(sales.total_value), 0) AS revenue,
 			COALESCE(SUM(sale_profit.profit), 0) AS profit`).
 		Joins("LEFT JOIN (?) AS sale_profit ON sale_profit.sale_id = sales.id", profitBySale).
+		Where("sales.user_id = ?", filter.UserID).
 		Group("sales.customer_id")
 
 	if filter.Start != nil {

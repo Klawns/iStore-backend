@@ -6,12 +6,14 @@ import (
 )
 
 type Customer struct {
-	ID    int
-	Name  string
-	Phone string
+	ID     int
+	UserID uint
+	Name   string
+	Phone  string
 }
 
 type CustomerListFilter struct {
+	UserID        uint
 	Page          int
 	Limit         int
 	Start         *time.Time

@@ -6,11 +6,15 @@ import (
 )
 
 type UserEntity struct {
-	ID           uint   `gorm:"primaryKey"`
-	Email        string `gorm:"uniqueIndex;not null"`
-	PasswordHash string `gorm:"not null"`
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID                   uint   `gorm:"primaryKey"`
+	Email                string `gorm:"uniqueIndex;not null"`
+	PasswordHash         string `gorm:"not null"`
+	PrivacyPolicyVersion string `gorm:"column:privacy_policy_version"`
+	PrivacyAcceptedAt    *time.Time
+	TermsVersion         string `gorm:"column:terms_version"`
+	TermsAcceptedAt      *time.Time
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 }
 
 func (UserEntity) TableName() string {
@@ -23,9 +27,13 @@ func FromDomain(user *domain.User) *UserEntity {
 	}
 
 	return &UserEntity{
-		ID:           user.ID,
-		Email:        user.Email,
-		PasswordHash: user.PasswordHash,
+		ID:                   user.ID,
+		Email:                user.Email,
+		PasswordHash:         user.PasswordHash,
+		PrivacyPolicyVersion: user.PrivacyPolicyVersion,
+		PrivacyAcceptedAt:    user.PrivacyAcceptedAt,
+		TermsVersion:         user.TermsVersion,
+		TermsAcceptedAt:      user.TermsAcceptedAt,
 	}
 }
 
@@ -35,8 +43,12 @@ func (u *UserEntity) ToDomain() *domain.User {
 	}
 
 	return &domain.User{
-		ID:           u.ID,
-		Email:        u.Email,
-		PasswordHash: u.PasswordHash,
+		ID:                   u.ID,
+		Email:                u.Email,
+		PasswordHash:         u.PasswordHash,
+		PrivacyPolicyVersion: u.PrivacyPolicyVersion,
+		PrivacyAcceptedAt:    u.PrivacyAcceptedAt,
+		TermsVersion:         u.TermsVersion,
+		TermsAcceptedAt:      u.TermsAcceptedAt,
 	}
 }

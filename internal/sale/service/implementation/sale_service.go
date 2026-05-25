@@ -1,6 +1,7 @@
 package implementation
 
 import (
+	"errors"
 	"istore/internal/sale/domain"
 	"istore/internal/sale/repository/contracts"
 	"istore/internal/sale/service/contract"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 type SaleService struct {
@@ -23,6 +25,10 @@ func NewSaleService(repository contracts.SaleRepository) contract.SaleService {
 func (s *SaleService) Create(input *contract.CreateSaleInput) (*domain.Sale, *rest_err.RestErr) {
 	if input == nil {
 		return nil, rest_err.NewBadRequestError("Dados da venda são obrigatórios")
+	}
+
+	if input.UserID == 0 {
+		return nil, rest_err.NewUnauthorizedRequestError("invalid auth payload")
 	}
 
 	if input.ClienteID <= 0 {
@@ -46,6 +52,7 @@ func (s *SaleService) Create(input *contract.CreateSaleInput) (*domain.Sale, *re
 	}
 
 	sale := &domain.Sale{
+		UserID:        input.UserID,
 		CustomerID:    int(input.ClienteID),
 		PaymentType:   input.TipoPagamento,
 		PaymentStatus: input.StatusPagamento,
@@ -87,6 +94,9 @@ func (s *SaleService) Create(input *contract.CreateSaleInput) (*domain.Sale, *re
 
 	err := s.repository.Create(sale)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, rest_err.NewBadRequestError("Cliente invalido")
+		}
 		logger.Error("Erro ao criar venda: ", err, zap.String("customer_id", strconv.Itoa(int(input.ClienteID))), zap.String("payment_type", string(input.TipoPagamento)), zap.String("payment_status", string(input.StatusPagamento)), zap.String("journey", "CreateSale"))
 		return nil, rest_err.NewInternalServerError("Erro ao criar venda")
 	}
@@ -94,13 +104,17 @@ func (s *SaleService) Create(input *contract.CreateSaleInput) (*domain.Sale, *re
 
 }
 
-func (s *SaleService) GetByID(id int) (*domain.Sale, *rest_err.RestErr) {
+func (s *SaleService) GetByID(userID uint, id int) (*domain.Sale, *rest_err.RestErr) {
+	if userID == 0 {
+		return nil, rest_err.NewUnauthorizedRequestError("invalid auth payload")
+	}
+
 	if id <= 0 {
 		return nil, rest_err.NewBadRequestError("ID inválido")
 	}
 
 	// Primeiro, precisamos usar o repositório para buscar a venda pelo ID
-	sale, err := s.repository.FindByID(id)
+	sale, err := s.repository.FindByID(userID, id)
 	if err != nil {
 		logger.Error("Erro ao buscar venda por ID: ", err, zap.Int("sale_id", id), zap.String("journey", "GetSaleByID"))
 		return nil, rest_err.NewInternalServerError("Erro ao buscar venda por ID")
@@ -112,6 +126,10 @@ func (s *SaleService) GetByID(id int) (*domain.Sale, *rest_err.RestErr) {
 }
 
 func (s *SaleService) List(input contract.ListSalesInput) (*domain.SaleListResult, *rest_err.RestErr) {
+	if input.UserID == 0 {
+		return nil, rest_err.NewUnauthorizedRequestError("invalid auth payload")
+	}
+
 	if input.Page <= 0 {
 		return nil, rest_err.NewBadRequestError("Pagina invalida")
 	}
@@ -146,6 +164,7 @@ func (s *SaleService) List(input contract.ListSalesInput) (*domain.SaleListResul
 
 	result, err := s.repository.List(domain.SaleListFilter{
 		Page:          input.Page,
+		UserID:        input.UserID,
 		Limit:         input.Limit,
 		Start:         input.Start,
 		End:           input.End,
@@ -162,7 +181,11 @@ func (s *SaleService) List(input contract.ListSalesInput) (*domain.SaleListResul
 	return result, nil
 }
 
-func (s *SaleService) ListByPeriod(start time.Time, end time.Time) ([]domain.Sale, *rest_err.RestErr) {
+func (s *SaleService) ListByPeriod(userID uint, start time.Time, end time.Time) ([]domain.Sale, *rest_err.RestErr) {
+	if userID == 0 {
+		return nil, rest_err.NewUnauthorizedRequestError("invalid auth payload")
+	}
+
 	if start.IsZero() {
 		return nil, rest_err.NewBadRequestError("Data de início não pode ser zero")
 	}
@@ -175,7 +198,7 @@ func (s *SaleService) ListByPeriod(start time.Time, end time.Time) ([]domain.Sal
 		return nil, rest_err.NewBadRequestError("Data de término deve ser posterior à data de início")
 	}
 
-	sales, err := s.repository.ListByPeriod(start, end)
+	sales, err := s.repository.ListByPeriod(userID, start, end)
 	if err != nil {
 		logger.Error("Erro ao listar vendas por período: ", err, zap.Time("start", start), zap.Time("end", end), zap.String("journey", "ListSalesByPeriod"))
 		return nil, rest_err.NewInternalServerError("Erro ao listar vendas por período")
@@ -183,7 +206,11 @@ func (s *SaleService) ListByPeriod(start time.Time, end time.Time) ([]domain.Sal
 	return sales, nil
 }
 
-func (s *SaleService) UpdateStatus(id int, status domain.PaymentStatus) *rest_err.RestErr {
+func (s *SaleService) UpdateStatus(userID uint, id int, status domain.PaymentStatus) *rest_err.RestErr {
+	if userID == 0 {
+		return rest_err.NewUnauthorizedRequestError("invalid auth payload")
+	}
+
 	if id <= 0 {
 		return rest_err.NewBadRequestError("ID inválido")
 	}
@@ -192,7 +219,7 @@ func (s *SaleService) UpdateStatus(id int, status domain.PaymentStatus) *rest_er
 		return rest_err.NewBadRequestError("Status de pagamento inválido")
 	}
 
-	sale, err := s.repository.FindByID(id)
+	sale, err := s.repository.FindByID(userID, id)
 	if err != nil {
 		logger.Error("Erro ao buscar venda: ", err, zap.String("journey", "UpdateStatus"))
 		return rest_err.NewInternalServerError("Erro ao buscar venda")
@@ -201,7 +228,7 @@ func (s *SaleService) UpdateStatus(id int, status domain.PaymentStatus) *rest_er
 		return rest_err.NewNotFoundError("Venda não encontrada")
 	}
 
-	err = s.repository.UpdateStatus(id, status)
+	err = s.repository.UpdateStatus(userID, id, status)
 	if err != nil {
 		logger.Error("Erro ao atualizar status da venda: ", err, zap.Int("sale_id", id), zap.String("payment_status", string(status)), zap.String("journey", "UpdateSaleStatus"))
 		return rest_err.NewInternalServerError("Erro ao atualizar status da venda")
@@ -209,12 +236,16 @@ func (s *SaleService) UpdateStatus(id int, status domain.PaymentStatus) *rest_er
 	return nil
 }
 
-func (s *SaleService) Delete(id int) *rest_err.RestErr {
+func (s *SaleService) Delete(userID uint, id int) *rest_err.RestErr {
+	if userID == 0 {
+		return rest_err.NewUnauthorizedRequestError("invalid auth payload")
+	}
+
 	if id <= 0 {
 		return rest_err.NewBadRequestError("ID inválido")
 	}
 
-	sale, err := s.repository.FindByID(id)
+	sale, err := s.repository.FindByID(userID, id)
 	if err != nil {
 		logger.Error("Erro ao buscar venda: ", err, zap.Int("sale_id", id), zap.String("journey", "DeleteSale"))
 		return rest_err.NewInternalServerError("Erro ao deletar venda")
@@ -223,7 +254,7 @@ func (s *SaleService) Delete(id int) *rest_err.RestErr {
 		return rest_err.NewNotFoundError("Venda não encontrada")
 	}
 
-	err = s.repository.Delete(id)
+	err = s.repository.Delete(userID, id)
 	if err != nil {
 		logger.Error("Erro ao deletar venda: ", err, zap.Int("sale_id", id), zap.String("journey", "DeleteSale"))
 		return rest_err.NewInternalServerError("Erro ao deletar venda")
@@ -231,12 +262,16 @@ func (s *SaleService) Delete(id int) *rest_err.RestErr {
 	return nil
 }
 
-func (s *SaleService) ListInstallmentAlerts(now time.Time, windowDays int) ([]domain.SaleInstallment, *rest_err.RestErr) {
+func (s *SaleService) ListInstallmentAlerts(userID uint, now time.Time, windowDays int) ([]domain.SaleInstallment, *rest_err.RestErr) {
+	if userID == 0 {
+		return nil, rest_err.NewUnauthorizedRequestError("invalid auth payload")
+	}
+
 	if windowDays <= 0 {
 		windowDays = 7
 	}
 
-	installments, err := s.repository.ListInstallmentAlerts(now, windowDays)
+	installments, err := s.repository.ListInstallmentAlerts(userID, now, windowDays)
 	if err != nil {
 		logger.Error("Erro ao listar parcelas para acompanhamento: ", err, zap.String("journey", "ListInstallmentAlerts"))
 		return nil, rest_err.NewInternalServerError("Erro ao listar parcelas")
@@ -245,12 +280,16 @@ func (s *SaleService) ListInstallmentAlerts(now time.Time, windowDays int) ([]do
 	return installments, nil
 }
 
-func (s *SaleService) ListInstallmentsBySaleID(saleID int) ([]domain.SaleInstallment, *rest_err.RestErr) {
+func (s *SaleService) ListInstallmentsBySaleID(userID uint, saleID int) ([]domain.SaleInstallment, *rest_err.RestErr) {
+	if userID == 0 {
+		return nil, rest_err.NewUnauthorizedRequestError("invalid auth payload")
+	}
+
 	if saleID <= 0 {
 		return nil, rest_err.NewBadRequestError("ID inválido")
 	}
 
-	installments, err := s.repository.ListInstallmentsBySaleID(saleID)
+	installments, err := s.repository.ListInstallmentsBySaleID(userID, saleID)
 	if err != nil {
 		logger.Error("Erro ao listar parcelas da venda: ", err, zap.Int("sale_id", saleID), zap.String("journey", "ListInstallmentsBySaleID"))
 		return nil, rest_err.NewInternalServerError("Erro ao listar parcelas")
@@ -259,7 +298,11 @@ func (s *SaleService) ListInstallmentsBySaleID(saleID int) ([]domain.SaleInstall
 	return installments, nil
 }
 
-func (s *SaleService) UpdateInstallmentStatus(id int, input contract.UpdateInstallmentStatusInput) (*domain.SaleInstallment, *rest_err.RestErr) {
+func (s *SaleService) UpdateInstallmentStatus(userID uint, id int, input contract.UpdateInstallmentStatusInput) (*domain.SaleInstallment, *rest_err.RestErr) {
+	if userID == 0 {
+		return nil, rest_err.NewUnauthorizedRequestError("invalid auth payload")
+	}
+
 	if id <= 0 {
 		return nil, rest_err.NewBadRequestError("ID inválido")
 	}
@@ -268,7 +311,7 @@ func (s *SaleService) UpdateInstallmentStatus(id int, input contract.UpdateInsta
 		return nil, rest_err.NewBadRequestError("Status da parcela inválido")
 	}
 
-	installment, err := s.repository.UpdateInstallmentStatus(id, input.Status, input.Notes, time.Now())
+	installment, err := s.repository.UpdateInstallmentStatus(userID, id, input.Status, input.Notes, time.Now())
 	if err != nil {
 		logger.Error("Erro ao atualizar parcela: ", err, zap.Int("installment_id", id), zap.String("status", string(input.Status)), zap.String("journey", "UpdateInstallmentStatus"))
 		return nil, rest_err.NewInternalServerError("Erro ao atualizar parcela")

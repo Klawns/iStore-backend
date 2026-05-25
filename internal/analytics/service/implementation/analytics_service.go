@@ -130,6 +130,10 @@ func (s *AnalyticsService) GetStatuses(filter domain.AnalyticsFilter) ([]domain.
 }
 
 func normalizeFilter(filter domain.AnalyticsFilter) (domain.AnalyticsFilter, *rest_err.RestErr) {
+	if filter.UserID == 0 {
+		return domain.AnalyticsFilter{}, rest_err.NewUnauthorizedRequestError("invalid auth payload")
+	}
+
 	if !filter.StartDate.IsZero() && !filter.EndDate.IsZero() && filter.EndDate.Before(filter.StartDate) {
 		return domain.AnalyticsFilter{}, rest_err.NewBadRequestError("Data de termino deve ser posterior a data de inicio")
 	}

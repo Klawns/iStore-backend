@@ -2,6 +2,7 @@ package main
 
 import (
 	customerEntity "istore/internal/customer/repository/entity"
+	privacyEntity "istore/internal/privacy/repository/entity"
 	saleDomain "istore/internal/sale/domain"
 	saleEntity "istore/internal/sale/repository/entity"
 	userEntity "istore/internal/users/repository/entity"
@@ -18,11 +19,24 @@ func runMigrations(db *gorm.DB) error {
 		&saleEntity.SaleItemEntity{},
 		&saleEntity.SaleInstallmentEntity{},
 		&saleEntity.PaymentAlertEntity{},
+		&privacyEntity.PrivacyRequestEntity{},
 	); err != nil {
 		return err
 	}
 
 	installments := 1
+	if err := db.Model(&saleEntity.SaleEntity{}).
+		Where("user_id = 0 OR user_id IS NULL").
+		Update("user_id", db.Model(&userEntity.UserEntity{}).Select("id").Order("id ASC").Limit(1)).Error; err != nil {
+		return err
+	}
+
+	if err := db.Model(&customerEntity.CustomerEntity{}).
+		Where("user_id = 0 OR user_id IS NULL").
+		Update("user_id", db.Model(&userEntity.UserEntity{}).Select("id").Order("id ASC").Limit(1)).Error; err != nil {
+		return err
+	}
+
 	if err := db.Model(&saleEntity.SaleEntity{}).
 		Where("payment_type = ?", "CARD").
 		Updates(map[string]any{

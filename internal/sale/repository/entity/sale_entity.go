@@ -8,6 +8,7 @@ import (
 
 type SaleEntity struct {
 	ID            int                           `gorm:"primaryKey"`
+	UserID        uint                          `gorm:"column:user_id;index"`
 	CustomerID    int                           `gorm:"column:customer_id;not null;index"`
 	Customer      customerEntity.CustomerEntity `gorm:"foreignKey:CustomerID"`
 	TotalValue    int                           `gorm:"column:total_value;not null"`
@@ -41,6 +42,7 @@ func FromSaleDomain(sale *saleDomain.Sale) *SaleEntity {
 
 	return &SaleEntity{
 		ID:            sale.ID,
+		UserID:        sale.UserID,
 		CustomerID:    sale.CustomerID,
 		TotalValue:    sale.TotalValue,
 		PaymentStatus: sale.PaymentStatus,
@@ -64,6 +66,7 @@ func (s *SaleEntity) ToDomain() *saleDomain.Sale {
 
 	return &saleDomain.Sale{
 		ID:            s.ID,
+		UserID:        s.UserID,
 		CustomerID:    s.CustomerID,
 		CustomerName:  s.Customer.Name,
 		TotalValue:    s.TotalValue,

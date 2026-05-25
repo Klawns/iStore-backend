@@ -39,7 +39,7 @@ func (s *authService) SignIn(input authContracts.SignInInput) (string, *rest_err
 		return "", rest_err.NewUnauthorizedRequestError("invalid credentials")
 	}
 
-	token, restErr := s.jwtProvider.Generate(user.ID, user.Email)
+	token, restErr := s.jwtProvider.Generate(user.ID)
 	if restErr != nil {
 		return "", restErr
 	}
