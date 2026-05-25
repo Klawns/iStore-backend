@@ -1,6 +1,7 @@
 .git
 .idea
 .vscode
+.agents/
 
 .env
 .env.*
@@ -15,3 +16,4 @@ tmp
 coverage.out
 *.test
 *.exe
+skills-lock.json

@@ -1,2 +1,9 @@
 .env
 *.db
+.agents/
+skills-lock.json
+.idea/
+tmp/
+coverage.out
+*.test
+*.exe
