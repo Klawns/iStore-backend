@@ -8,7 +8,7 @@ func registerRoutes(router *gin.Engine, dependencies dependencies) {
 	router.DELETE("/users/me", dependencies.authMiddleware.Authenticate(), dependencies.authMiddleware.CSRF(), dependencies.userHandler.DeleteMe)
 
 	router.POST("/auth/sign-in", dependencies.authHandler.SignIn)
-	router.POST("/auth/sign-out", dependencies.authMiddleware.CSRF(), dependencies.authHandler.SignOut)
+	router.POST("/auth/sign-out", dependencies.authHandler.SignOut)
 
 	customers := router.Group("/customers", dependencies.authMiddleware.Authenticate(), dependencies.authMiddleware.CSRF())
 	customers.POST("", dependencies.customerHandler.Create)
