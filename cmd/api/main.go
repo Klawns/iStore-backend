@@ -1,15 +1,17 @@
 package main
 
 import (
+	"errors"
 	postgresDB "istore/pkg/database/postgres"
 	"log"
+	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 )
 
 func main() {
-	if err := godotenv.Load(); err != nil {
+	if err := godotenv.Load(); err != nil && !errors.Is(err, os.ErrNotExist) {
 		log.Println("error loading .env file")
 	}
 
