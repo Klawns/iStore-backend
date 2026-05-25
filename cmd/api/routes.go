@@ -38,6 +38,4 @@ func registerRoutes(router *gin.Engine, dependencies dependencies) {
 	analytics.GET("/customers/top", dependencies.analyticsHandler.TopCustomers)
 	analytics.GET("/statuses", dependencies.analyticsHandler.Statuses)
 
-	privacy := router.Group("/privacy", dependencies.authMiddleware.Authenticate())
-	privacy.GET("/export", dependencies.privacyHandler.Export)
 }

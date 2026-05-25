@@ -18,9 +18,6 @@ func (f *fakePrivacyRepository) Create(request *domain.PrivacyRequest) error {
 func (f *fakePrivacyRepository) ListByUserID(userID uint) ([]domain.PrivacyRequest, error) {
 	return []domain.PrivacyRequest{{ID: 1, UserID: userID, Type: domain.RequestAccess}}, nil
 }
-func (f *fakePrivacyRepository) ExportByUserID(userID uint) (*domain.PrivacyExport, error) {
-	return &domain.PrivacyExport{Account: domain.AccountExport{ID: userID}}, nil
-}
 
 func TestCreateRequestDefaultsStatusOpen(t *testing.T) {
 	repository := &fakePrivacyRepository{}

@@ -1,14 +1,11 @@
 package implementation
 
 import (
-	"errors"
 	"istore/internal/privacy/domain"
 	"istore/internal/privacy/repository/contracts"
 	serviceContracts "istore/internal/privacy/service/contracts"
 	"istore/pkg/rest_err"
 	"strings"
-
-	"gorm.io/gorm"
 )
 
 type privacyService struct {
@@ -51,22 +48,6 @@ func (s *privacyService) ListRequests(userID uint) ([]domain.PrivacyRequest, *re
 	}
 
 	return requests, nil
-}
-
-func (s *privacyService) Export(userID uint) (*domain.PrivacyExport, *rest_err.RestErr) {
-	if userID == 0 {
-		return nil, rest_err.NewUnauthorizedRequestError("usuario invalido")
-	}
-
-	export, err := s.repository.ExportByUserID(userID)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, rest_err.NewNotFoundError("usuario nao encontrado")
-		}
-		return nil, rest_err.NewInternalServerError("erro ao exportar dados LGPD")
-	}
-
-	return export, nil
 }
 
 func isValidRequestType(requestType domain.RequestType) bool {

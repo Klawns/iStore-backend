@@ -61,19 +61,3 @@ func (h *PrivacyHandler) CreateRequest(ctx *gin.Context) {
 
 	ctx.JSON(http.StatusCreated, response.FromDomain(privacyRequest))
 }
-
-func (h *PrivacyHandler) Export(ctx *gin.Context) {
-	payload, restErr := authMiddleware.GetAuthPayload(ctx)
-	if restErr != nil {
-		ctx.JSON(restErr.Code, restErr)
-		return
-	}
-
-	export, restErr := h.service.Export(payload.UserID)
-	if restErr != nil {
-		ctx.JSON(restErr.Code, restErr)
-		return
-	}
-
-	ctx.JSON(http.StatusOK, export)
-}
