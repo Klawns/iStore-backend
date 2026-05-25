@@ -32,15 +32,6 @@ func (s *userService) Create(input contracts.CreateUserInput) (*domain.User, *re
 		return nil, rest_err.NewBadRequestError("privacy policy and terms acceptance is required")
 	}
 
-	privacyVersion := strings.TrimSpace(input.PrivacyPolicyVersion)
-	if privacyVersion == "" {
-		privacyVersion = currentPrivacyPolicyVersion
-	}
-	termsVersion := strings.TrimSpace(input.TermsVersion)
-	if termsVersion == "" {
-		termsVersion = currentTermsVersion
-	}
-
 	existingUser, err := s.repository.FindByEmail(email)
 	if err != nil {
 		logger.Error("error finding user by email", err, zap.String("journey", "CreateUser"))
@@ -56,13 +47,14 @@ func (s *userService) Create(input contracts.CreateUserInput) (*domain.User, *re
 		return nil, rest_err.NewInternalServerError("error creating user")
 	}
 
+	acceptedAt := time.Now().UTC()
 	user := &domain.User{
 		Email:                email,
 		PasswordHash:         string(passwordHash),
-		PrivacyPolicyVersion: privacyVersion,
-		PrivacyAcceptedAt:    ptrTime(time.Now().UTC()),
-		TermsVersion:         termsVersion,
-		TermsAcceptedAt:      ptrTime(time.Now().UTC()),
+		PrivacyPolicyVersion: currentPrivacyPolicyVersion,
+		PrivacyAcceptedAt:    ptrTime(acceptedAt),
+		TermsVersion:         currentTermsVersion,
+		TermsAcceptedAt:      ptrTime(acceptedAt),
 	}
 
 	if err := s.repository.Create(user); err != nil {
