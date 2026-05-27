@@ -129,8 +129,7 @@ func (r *customerRepository) List(filter domain.CustomerListFilter) (*domain.Cus
 				phone,
 				sales_count,
 				revenue,
-				profit,
-				CASE WHEN sales_count > 0 THEN revenue / sales_count ELSE 0 END AS average_ticket`).
+				profit`).
 			Order("name ASC, id ASC").
 			Limit(filter.Limit).
 			Offset(offset).
@@ -261,16 +260,20 @@ func hasSaleFilters(filter domain.CustomerListFilter) bool {
 }
 
 type customerListProjection struct {
-	ID            int    `gorm:"column:id"`
-	Name          string `gorm:"column:name"`
-	Phone         string `gorm:"column:phone"`
-	SalesCount    int    `gorm:"column:sales_count"`
-	Revenue       int    `gorm:"column:revenue"`
-	Profit        int    `gorm:"column:profit"`
-	AverageTicket int    `gorm:"column:average_ticket"`
+	ID         int    `gorm:"column:id"`
+	Name       string `gorm:"column:name"`
+	Phone      string `gorm:"column:phone"`
+	SalesCount int    `gorm:"column:sales_count"`
+	Revenue    int    `gorm:"column:revenue"`
+	Profit     int    `gorm:"column:profit"`
 }
 
 func (p customerListProjection) ToDomain() domain.CustomerListItem {
+	averageTicket := 0
+	if p.SalesCount > 0 {
+		averageTicket = p.Revenue / p.SalesCount
+	}
+
 	return domain.CustomerListItem{
 		ID:            p.ID,
 		Name:          p.Name,
@@ -278,7 +281,7 @@ func (p customerListProjection) ToDomain() domain.CustomerListItem {
 		SalesCount:    p.SalesCount,
 		Revenue:       p.Revenue,
 		Profit:        p.Profit,
-		AverageTicket: p.AverageTicket,
+		AverageTicket: averageTicket,
 	}
 }
 

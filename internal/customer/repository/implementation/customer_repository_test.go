@@ -115,6 +115,37 @@ func TestListFiltersSalesAndSummarizesAllFilteredCustomers(t *testing.T) {
 	}
 }
 
+func TestListCalculatesFractionalAverageTicketInGo(t *testing.T) {
+	db := newCustomerListTestDB(t)
+	repository := NewCustomerRepository(db)
+
+	customerID := seedCustomer(t, db, "Ana Silva", "11999990000")
+	seedSaleWithItems(t, db, customerID, saleDomain.PaymentApproved, saleDomain.Pix, time.Date(2026, time.May, 10, 12, 0, 0, 0, time.UTC), []saleEntity.SaleItemEntity{
+		{ProductName: "iPhone", Quantity: 1, CostPrice: 300000, SalePrice: 500000},
+	})
+	seedSaleWithItems(t, db, customerID, saleDomain.PaymentApproved, saleDomain.Pix, time.Date(2026, time.May, 11, 12, 0, 0, 0, time.UTC), []saleEntity.SaleItemEntity{
+		{ProductName: "MacBook", Quantity: 1, CostPrice: 400000, SalePrice: 500001},
+	})
+
+	result, err := repository.List(domain.CustomerListFilter{UserID: 1, Page: 1, Limit: 10})
+	if err != nil {
+		t.Fatalf("list customers with fractional average ticket: %v", err)
+	}
+
+	if len(result.Items) != 1 {
+		t.Fatalf("expected one customer, got %#v", result.Items)
+	}
+
+	item := result.Items[0]
+	if item.SalesCount != 2 || item.Revenue != 1000001 || item.AverageTicket != 500000 {
+		t.Fatalf("expected truncated average ticket, got %#v", item)
+	}
+
+	if result.Summary.SalesCount != 2 || result.Summary.Revenue != 1000001 || result.Summary.AverageTicket != 500000 {
+		t.Fatalf("expected truncated summary average ticket, got %#v", result.Summary)
+	}
+}
+
 func TestListScopesCustomersByUser(t *testing.T) {
 	db := newCustomerListTestDB(t)
 	repository := NewCustomerRepository(db)
