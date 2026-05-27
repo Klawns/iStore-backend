@@ -24,19 +24,11 @@ func runMigrations(db *gorm.DB) error {
 		return err
 	}
 
+	if err := deleteOrphanUserData(db); err != nil {
+		return err
+	}
+
 	installments := 1
-	if err := db.Model(&saleEntity.SaleEntity{}).
-		Where("user_id = 0 OR user_id IS NULL").
-		Update("user_id", db.Model(&userEntity.UserEntity{}).Select("id").Order("id ASC").Limit(1)).Error; err != nil {
-		return err
-	}
-
-	if err := db.Model(&customerEntity.CustomerEntity{}).
-		Where("user_id = 0 OR user_id IS NULL").
-		Update("user_id", db.Model(&userEntity.UserEntity{}).Select("id").Order("id ASC").Limit(1)).Error; err != nil {
-		return err
-	}
-
 	if err := db.Model(&saleEntity.SaleEntity{}).
 		Where("payment_type = ?", "CARD").
 		Updates(map[string]any{
@@ -48,6 +40,41 @@ func runMigrations(db *gorm.DB) error {
 	}
 
 	return backfillSaleInstallments(db)
+}
+
+func deleteOrphanUserData(db *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		orphanSales := tx.Model(&saleEntity.SaleEntity{}).
+			Select("id").
+			Where("user_id = 0 OR user_id IS NULL")
+
+		if err := tx.Where("sale_id IN (?)", orphanSales).
+			Delete(&saleEntity.PaymentAlertEntity{}).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Where("sale_id IN (?)", orphanSales).
+			Delete(&saleEntity.SaleInstallmentEntity{}).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Where("sale_id IN (?)", orphanSales).
+			Delete(&saleEntity.SaleItemEntity{}).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Where("user_id = 0 OR user_id IS NULL").
+			Delete(&saleEntity.SaleEntity{}).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Where("user_id = 0 OR user_id IS NULL").
+			Delete(&customerEntity.CustomerEntity{}).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
 }
 
 func backfillSaleInstallments(db *gorm.DB) error {
