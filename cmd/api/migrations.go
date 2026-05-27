@@ -1,17 +1,27 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	customerEntity "istore/internal/customer/repository/entity"
 	privacyEntity "istore/internal/privacy/repository/entity"
 	saleDomain "istore/internal/sale/domain"
 	saleEntity "istore/internal/sale/repository/entity"
 	userEntity "istore/internal/users/repository/entity"
+	"log"
 	"time"
 
 	"gorm.io/gorm"
 )
 
 func runMigrations(db *gorm.DB) error {
+	return runMigrationsWithContext(context.Background(), db)
+}
+
+func runMigrationsWithContext(ctx context.Context, db *gorm.DB) error {
+	db = db.WithContext(ctx)
+
+	log.Println("migration step starting: auto_migrate")
 	if err := db.AutoMigrate(
 		&userEntity.UserEntity{},
 		&customerEntity.CustomerEntity{},
@@ -21,14 +31,18 @@ func runMigrations(db *gorm.DB) error {
 		&saleEntity.PaymentAlertEntity{},
 		&privacyEntity.PrivacyRequestEntity{},
 	); err != nil {
-		return err
+		return fmt.Errorf("auto_migrate: %w", err)
 	}
+	log.Println("migration step completed: auto_migrate")
 
+	log.Println("migration step starting: delete_orphan_user_data")
 	if err := deleteOrphanUserData(db); err != nil {
-		return err
+		return fmt.Errorf("delete_orphan_user_data: %w", err)
 	}
+	log.Println("migration step completed: delete_orphan_user_data")
 
 	installments := 1
+	log.Println("migration step starting: backfill_legacy_card_sales")
 	if err := db.Model(&saleEntity.SaleEntity{}).
 		Where("payment_type = ?", "CARD").
 		Updates(map[string]any{
@@ -36,10 +50,17 @@ func runMigrations(db *gorm.DB) error {
 			"installments": installments,
 			"billing_day":  nil,
 		}).Error; err != nil {
-		return err
+		return fmt.Errorf("backfill_legacy_card_sales: %w", err)
 	}
+	log.Println("migration step completed: backfill_legacy_card_sales")
 
-	return backfillSaleInstallments(db)
+	log.Println("migration step starting: backfill_sale_installments")
+	if err := backfillSaleInstallments(db); err != nil {
+		return fmt.Errorf("backfill_sale_installments: %w", err)
+	}
+	log.Println("migration step completed: backfill_sale_installments")
+
+	return nil
 }
 
 func deleteOrphanUserData(db *gorm.DB) error {
