@@ -1,6 +1,7 @@
 package implementation
 
 import (
+	"context"
 	"errors"
 	customerEntity "istore/internal/customer/repository/entity"
 	privacyEntity "istore/internal/privacy/repository/entity"
@@ -8,9 +9,12 @@ import (
 	"istore/internal/users/domain"
 	"istore/internal/users/repository/contracts"
 	"istore/internal/users/repository/entity"
+	"time"
 
 	"gorm.io/gorm"
 )
+
+const userRepositoryQueryTimeout = 5 * time.Second
 
 type userRepository struct {
 	db *gorm.DB
@@ -21,8 +25,11 @@ func NewUserRepository(db *gorm.DB) contracts.UserRepository {
 }
 
 func (r *userRepository) Create(user *domain.User) error {
+	ctx, cancel := context.WithTimeout(context.Background(), userRepositoryQueryTimeout)
+	defer cancel()
+
 	userEntity := entity.FromDomain(user)
-	if err := r.db.Create(userEntity).Error; err != nil {
+	if err := r.db.WithContext(ctx).Create(userEntity).Error; err != nil {
 		return err
 	}
 
@@ -31,8 +38,11 @@ func (r *userRepository) Create(user *domain.User) error {
 }
 
 func (r *userRepository) FindByEmail(email string) (*domain.User, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), userRepositoryQueryTimeout)
+	defer cancel()
+
 	var userEntity entity.UserEntity
-	if err := r.db.Where("email = ?", email).First(&userEntity).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("email = ?", email).First(&userEntity).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
@@ -44,8 +54,11 @@ func (r *userRepository) FindByEmail(email string) (*domain.User, error) {
 }
 
 func (r *userRepository) FindByID(id uint) (*domain.User, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), userRepositoryQueryTimeout)
+	defer cancel()
+
 	var userEntity entity.UserEntity
-	if err := r.db.First(&userEntity, id).Error; err != nil {
+	if err := r.db.WithContext(ctx).First(&userEntity, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}

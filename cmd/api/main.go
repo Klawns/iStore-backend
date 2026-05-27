@@ -53,7 +53,8 @@ func main() {
 
 	dependencies := buildDependencies(db, jwtSecret)
 
-	router := gin.Default()
+	router := gin.New()
+	router.Use(gin.Recovery(), structuredRequestLogger())
 	registerRoutes(router, dependencies)
 	registerDiagnosticsRoutes(router, db)
 
